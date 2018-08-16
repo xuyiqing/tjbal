@@ -1,0 +1,33 @@
+##useDynLib(tjbal, .registration=TRUE)
+##exportPattern("^[[:alpha:]]+")
+importFrom("stats", "na.omit", "quantile", "sd", "var", "cov", "lm", "predict", 
+"as.formula","weighted.mean")
+importFrom("foreach","foreach","%dopar%")
+importFrom("doParallel","registerDoParallel")
+importFrom("parallel", "detectCores", "stopCluster", "makeCluster")
+importFrom("ggplot2", "geom_boxplot", "geom_density", "geom_tile",
+           "geom_point", "labs", "theme_bw", "scale_fill_manual", 
+           "geom_hline", "geom_line", "geom_ribbon", "geom_vline",
+           "ggplot", "coord_cartesian", "coord_flip", 
+           "scale_x_continuous", "scale_y_continuous",
+           "scale_linetype_manual", "scale_size_manual", "theme",
+           "scale_colour_manual", "aes", "annotate", "ggtitle", "geom_rect",
+		   "scale_color_discrete", "scale_color_manual", "ggplotGrob", 
+           "guide_legend", "margin", "guides","xlab","ylab","qplot",
+           "element_rect", "element_line","element_text","element_blank")
+importFrom("plyr","ddply")
+importFrom("KBAL","kbal")
+
+
+##importFrom(Rcpp, evalCpp)
+##importFrom("MASS", "ginv")
+##importFrom("GGally", "ggpairs")
+##importFrom("mvtnorm", "rmvnorm")
+##importFrom("abind", "abind")
+##importFrom("panelView", "panelView")
+
+export(tjbal)
+S3method("tjbal", "default")
+S3method("tjbal", "formula")
+S3method("print", "tjbal")
+S3method("plot", "tjbal")
