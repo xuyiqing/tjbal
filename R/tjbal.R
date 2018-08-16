@@ -582,7 +582,7 @@ tjbalance <- function(
             boot.out <- foreach(j=1:nboots, 
                 .inorder = FALSE,
                 .export = c("ebalance","linearweights"),
-                .packages = c("KBAL","ebal")
+                .packages = c("KBAL")
                 ) %dopar% {
                 return(one.boot())
             }
@@ -1086,7 +1086,7 @@ plot.tjbal <- function(x,
     
     if (type == "gap") { 
         
-        maintext <- "Estimated Treatment Effect on the Treated"
+        maintext <- "Average Treatment Effect on the Treated"
         ## axes labels
         if (is.null(xlab) == TRUE) {
             if (x$DID == TRUE) {

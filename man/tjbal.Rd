@@ -11,16 +11,16 @@
 \arguments{
 \item{formula}{an object of class "formula": a symbolic description of
   the model to be fitted. The first variable on the right-hand-side is a dichotomous treatment indicator (D); 
-  the rest of right-hand-side variables are time-invariant controls (X). If X are time-varying, 
+  the rest of the right-hand-side variables are time-invariant controls (X). If X are time-varying, 
   they will be averaged within each unit based on values specified by \code{X.avg.time}.}
 \item{data}{a data frame (must be a balanced panel).}
 \item{Y}{outcome.}
 \item{D}{treatment.}
 \item{X}{time-invariant covariates.}
-\item{X.avg.time}{}
+\item{X.avg.time}{a set of time periods over which covariates are being averaged. Ignored if the treatment starts at different times.}
 \item{index}{a two-element string vector specifying the unit (group)
     and time indicators. Must be of length 2.}
-\item{Y.match.periods}{}
+\item{Y.match.periods}{a set of pre-treatment time periods in which the outcome variable is being balanced on.}
 \item{demean}{a logical flag indicating whether a demeaning procedure will be performed to take out the average of pre-treatment outcomes for each unit.}
 \item{kernel}{a logical flag indicating whether the kernel transformation will be used; if \code{kernel = FALSE}, the mean balancing estimator will be used.}
 \item{sigma}{a numeric value specifying the bandwidth of the kernel transformation. Ignored if \code{kernel = FALSE}.}
@@ -61,15 +61,15 @@
   \item{Y.bar}{average values of treated outcomes, counterfactual outcomes, and control outcomes over time.}
   \item{att}{average treatment effect on the treated over time (it is averaged 
     based on the timing of the treatment if it is different for each unit).}
-  \item{att.avg}{average treatment effect on the treated (averaged both across unit and over time.}
+  \item{att.avg}{average treatment effect on the treated (averaged both across unit and over time).}
   \item{success}{a logical flag indicating whether significant improvement in covariate distance is made through balancing.}
-  \item{L1.before}{L1 measure of distance prior to balancing.}
+  \item{L1.before}{L1 measure of distance before balancing.}
   \item{L1.after}{L1 measure of distance after balancing.}
   \item{L1.ratio}{L1.after divided by L1.before -- a smaller number means more improvement is made.}
   \item{min90}{the minimum number of dimensions that explains over 90\% of the variation in the kernel matrix.}
   \item{ndims}{the number of dimensions of the kernel matrix being balanced on.}
   \item{sigma.best}{the turning parameter being used in kernel balancing.}
-  \item{bal.table}{the balance table}
+  \item{bal.table}{the balance table.}
   \item{est.att}{inference for \code{att}.}
   \item{est.att.avg}{inference for \code{att.avg}.}
   \item{att.boot}{bootstrap results for \code{att}.}

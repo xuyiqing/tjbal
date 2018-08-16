@@ -3,8 +3,8 @@
 \title{Plotting}
 \description{Visualizes estimation results of trajectory balancing.}
 \usage{\method{plot}{tjbal}(x, type = "gap", xlim = NULL, ylim = NULL,
-            xlab = NULL, ylab = NULL, legendOff = FALSE, raw = "none",
-            main = NULL, nfactors = NULL, id = NULL, axis.adjust = FALSE, \dots)
+    xlab = NULL, ylab = NULL, legendOff = FALSE, raw = "none",
+    main = NULL, nfactors = NULL, id = NULL, axis.adjust = FALSE, \dots)
 }
 \arguments{
   \item{x}{a \code{\link{tjbal}} object.}
