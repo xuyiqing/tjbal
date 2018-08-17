@@ -201,17 +201,17 @@ tjbal.default <- function(
     T0 <- apply((D==0),2,sum) 
     T0.tr <- T0[id.tr]
     T0.min<-min(T0.tr)
-    ## same timing: DID
+    ## same timing: 
     if (Ntr==1) {
-        DID <- TRUE
+        sameT0 <- TRUE
     } else {
         if (var(T0.tr)==0) {
-            DID <- TRUE        
+            sameT0 <- TRUE        
         } else {
-            DID <- FALSE
+            sameT0 <- FALSE
         }
     }    
-    if (DID==TRUE) {
+    if (sameT0==TRUE) {
         Tpre <- Ttot[1:unique(T0.tr)]        
     }
 
@@ -223,7 +223,7 @@ tjbal.default <- function(
     ## covariates (allow missing, but non-missing values have to be same for each unit)
     if (p > 0) {
         if (is.null(X.avg.time)==FALSE) {
-            if (DID == FALSE) {
+            if (sameT0 == FALSE) {
                 stop("\"X.avg.time\" is only allowed when the treatment starts at the same time.")
             }
             if (is.list(X.avg.time)==TRUE) {
@@ -300,7 +300,7 @@ tjbal.default <- function(
     ## balancing
     #######################
 
-    if (DID == TRUE) {
+    if (sameT0 == TRUE) {
 
         bal.out <- tjbalance(data = data.wide, Y = Yname, D = "treat", X = Xname,
             Y.match.periods = Y.match.periods, Ttot = Ttot, Tpre = Tpre, unit = "id", 
@@ -316,7 +316,7 @@ tjbal.default <- function(
             method=method, whiten = whiten, test = test, nsigma = nsigma) 
     }
 
-    out <- c(list(DID = DID), bal.out)
+    out <- c(list(sameT0 = sameT0), bal.out)
     out$call <- match.call()
     class(out) <- "tjbal"
     return(out)
@@ -1041,7 +1041,7 @@ plot.tjbal <- function(x,
     line.width <- c(1.2,0.5)
   
     ## type of plots
-    if ((type == "gap" && x$DID == TRUE) | type == "counterfactual" ) {
+    if ((type == "gap" && x$sameT0 == TRUE) | type == "counterfactual" ) {
         if (is.numeric(time[1])==FALSE) {
             time <- 1:TT
         }
@@ -1057,7 +1057,7 @@ plot.tjbal <- function(x,
         time.label <- time[show]     
     }
 
-    if (type == "gap" && x$DID == FALSE)  { ## variable treatment timing
+    if (type == "gap" && x$sameT0 == FALSE)  { ## variable treatment timing
         time <- c(1:TT) - min(T0)
         time.bf <- 0 ## before treatment
         if (length(xlim) != 0) {
@@ -1089,7 +1089,7 @@ plot.tjbal <- function(x,
         maintext <- "Average Treatment Effect on the Treated"
         ## axes labels
         if (is.null(xlab) == TRUE) {
-            if (x$DID == TRUE) {
+            if (x$sameT0 == TRUE) {
                 xlab <- x$index[2]
             } else {
                 xlab <- paste("Time relative to Treatment")
@@ -1137,7 +1137,7 @@ plot.tjbal <- function(x,
         
     } else if (type=="counterfactual") { 
 
-        if (length(x$id.tr) == 1| x$DID==TRUE) { # same/single treatment timing
+        if (length(x$id.tr) == 1| x$sameT0==TRUE) { # same/single treatment timing
 
             ## axes labels
             if (is.null(xlab)==TRUE) {

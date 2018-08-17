@@ -42,7 +42,6 @@
   \code{tjbal} provides a general reweighting approach to causal inference with time-series cross-sectional (TSCS) data. It includes two estimators, mean balancing and kernel balancing. The former reweights control units such that the averages of the pre-treatment outcomes and covariates are approximately equal between the treatment and (reweighted) control groups. The latter relaxes the linearity assumption and seeks approximate balance on a kernel-based feature expansion of the pre-treatment outcomes and covariates. The resulting approach inherits the ability of synthetic control and latent factor models to tolerate time-varying confounders, but (1) improves feasibility and stability with reduced user discretion; (2) accommodates both short and long pre-treatment time periods with many or few treated units; and (3) balances on the high-order ``trajectory" of pre-treatment outcomes rather than their period-wise average. We illustrate this method with simulations and two empirical examples. 
 }
 \value{
-  \item{DID}{TRUE if the timing of the treatment is the same.}
   \item{data.wide}{a matrix storing data in wide form -- each row represents one observation.}
   \item{id.tr}{a vector of row numbers for the treatment units.}
   \item{id.co}{a vector of row numbers for the control units.}
@@ -74,6 +73,7 @@
   \item{est.att.avg}{inference for \code{att.avg}.}
   \item{att.boot}{bootstrap results for \code{att}.}
   \item{att.avg.boot}{bootstrap results for \code{att.avg}.}
+  \item{sameT0}{TRUE if the timing of the treatment is the same.}  
 }
 \author{
   Chad Hazlett <chazlett@ucla.edu>, UCLA
