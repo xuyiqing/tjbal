@@ -684,12 +684,12 @@ tjbalance <- function(
                 # treated
                 mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
                 # control
-                mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean) 
+                mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean)
                 # weighted control 
                 mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
                 # difference in means
-                diff.pre <- mean.tr - mean.co.pre
-                diff.pst <- mean.tr - mean.co.pst
+                diff.pre <- (mean.tr - mean.co.pre)/abs(mean.tr)
+                diff.pst <- (mean.tr - mean.co.pst)/abs(mean.tr)
                 bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, diff.pre, diff.pst)
             }
             if (print.baltable==TRUE) {
@@ -782,7 +782,7 @@ tjbalance.mult <- function(
     T0.min <- min(T0.tr)
     T0.names <- paste0("T0=",T0.unique)
 
-         ## recenter based on treatment timing
+    ## recenter based on treatment timing
     time.adj <- c(-(T0.max -1) : (TT-T0.min))
     TT.adj <- length(time.adj)
         ## storage
@@ -930,6 +930,7 @@ plot.tjbal <- function(x,
     raw = "none",
     wmin = -20, ## minimal log weights
     stat = "mean",
+    theme.bw = TRUE, ## black/white or gray theme
     axis.adjust = FALSE,
     ...){
 
@@ -1017,6 +1018,13 @@ plot.tjbal <- function(x,
         x.v <- 0
         x.h <- 0
     }
+
+    ## color of axes
+    if (theme.bw == TRUE) {
+      line.color <- "#AAAAAA70"
+    } else {
+      line.color <- "white"
+    }
     
     ##-------------------------------##
     ## Plotting
@@ -1086,7 +1094,11 @@ plot.tjbal <- function(x,
     
     if (type == "gap") { 
         
-        maintext <- "Average Treatment Effect on the Treated"
+        if (x$Ntr>1) {
+            maintext <- "Average Treatment Effect on the Treated"
+        } else {
+            maintext <- "Treatment Effect on the Treated"
+        }
         ## axes labels
         if (is.null(xlab) == TRUE) {
             if (x$sameT0 == TRUE) {
@@ -1112,9 +1124,13 @@ plot.tjbal <- function(x,
         }
                          
         ## plotting
-        p <- ggplot(data) +
-        geom_vline(xintercept = time.bf, colour="white",size = 2) +
-        geom_hline(yintercept = 0, colour="white",size = 2) +
+        p <- ggplot(data)
+        if (theme.bw == TRUE) {
+          p <- p + theme_bw()
+        }
+        p <- p +
+        geom_vline(xintercept = time.bf, colour=line.color,size = 2) +
+        geom_hline(yintercept = 0, colour=line.color,size = 2) +
                 ## annotate("rect", xmin= time.bf, xmax= Inf,
                 ##          ymin=-Inf, ymax=Inf, alpha = .1,
                 ##          fill = "yellow") +
@@ -1159,8 +1175,12 @@ plot.tjbal <- function(x,
                  "type" = c(rep("tr",nT),
                     rep("co",nT))) 
                         ## theme 
-                p <- ggplot(data) + xlab(xlab) +  ylab(ylab) +
-                geom_vline(xintercept=time.bf,colour="white",size = 2) +
+                p <- ggplot(data)
+                if (theme.bw == TRUE) {
+                  p <- p + theme_bw()
+                }
+                p <- p + xlab(xlab) +  ylab(ylab) +
+                geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
                 ## shade in the post-treatment period
                 #annotate("rect", xmin= time.bf, xmax= Inf,
                 # ymin=-Inf, ymax=Inf, alpha = .3) +
@@ -1212,8 +1232,12 @@ plot.tjbal <- function(x,
                 colnames(data.band) <- c("time","tr5","tr95","co5","co95")
 
                 ## theme 
-                p <- ggplot(data) + xlab(xlab) +  ylab(ylab) +
-                geom_vline(xintercept=time.bf,colour="white",size = 2) +
+                p <- ggplot(data)
+                if (theme.bw == TRUE) {
+                  p <- p + theme_bw()
+                }
+                p <- p + xlab(xlab) +  ylab(ylab) +
+                geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
                 #annotate("rect", xmin= time.bf, xmax= Inf,
                 # ymin=-Inf, ymax=Inf, alpha = .3) +
                 theme(legend.position = legend.pos,
@@ -1268,8 +1292,12 @@ plot.tjbal <- function(x,
                    "id" = c(rep("tr",nT), rep("co",nT), rep(c(x$id.tr,x$id.co), each = nT))) 
 
                 ## theme
-                p <- ggplot(data) + xlab(xlab) +  ylab(ylab) +
-                        geom_vline(xintercept=time.bf,colour="white",size = 2) +
+                p <- ggplot(data)
+                if (theme.bw == TRUE) {
+                  p <- p + theme_bw()
+                }
+                p <- p + xlab(xlab) +  ylab(ylab) +
+                        geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
                         #annotate("rect", xmin= time.bf, xmax= Inf,
                         #   ymin=-Inf, ymax=Inf, alpha = .3) +
                         theme(legend.position = legend.pos,
@@ -1349,8 +1377,12 @@ plot.tjbal <- function(x,
                                          "type" = c(rep("tr",nT),
                                                     rep("co",nT))) 
                 ## theme 
-                p <- ggplot(data) + xlab(xlab) +  ylab(ylab) +
-                    geom_vline(xintercept=time.bf,colour="white",size = 2) +
+                p <- ggplot(data) 
+                if (theme.bw == TRUE) {
+                  p <- p + theme_bw()
+                }
+                p <- p + xlab(xlab) +  ylab(ylab) +
+                    geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
                     annotate("rect", xmin= time.bf, xmax= Inf,
                                 ymin=-Inf, ymax=Inf, alpha = .3) +
                     theme(legend.position = legend.pos,
@@ -1400,8 +1432,12 @@ plot.tjbal <- function(x,
                 colnames(data.band) <- c("time","tr5","tr95")
                     
                 ## theme 
-                p <- ggplot(data) + xlab(xlab) +  ylab(ylab) +
-                    geom_vline(xintercept=time.bf,colour="white",size = 2) +
+                p <- ggplot(data)
+                if (theme.bw == TRUE) {
+                  p <- p + theme_bw()
+                }
+                p <- p + xlab(xlab) +  ylab(ylab) +
+                    geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
                     annotate("rect", xmin= time.bf, xmax= Inf,
                              ymin=-Inf, ymax=Inf, alpha = .3) +
                     theme(legend.position = legend.pos,
@@ -1455,8 +1491,12 @@ plot.tjbal <- function(x,
                                                   rep(c(x$id.tr),
                                                       each = nT))) 
                 ## theme
-                p <- ggplot(data) + xlab(xlab) +  ylab(ylab) +
-                    geom_vline(xintercept=time.bf,colour="white",size = 2) +
+                p <- ggplot(data)
+                if (theme.bw == TRUE) {
+                  p <- p + theme_bw()
+                }
+                p <- p + xlab(xlab) +  ylab(ylab) +
+                    geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
                     annotate("rect", xmin= time.bf, xmax= Inf,
                              ymin=-Inf, ymax=Inf, alpha = .3) +
                     theme(legend.position = legend.pos,
@@ -1523,8 +1563,12 @@ plot.tjbal <- function(x,
             bw <- abs(w.min)/20            
         }
         p <- qplot(logw, col = I("gray70"), binwidth = bw,
-          xlab = "Weight (logarithmic)", ylab = "Counts") + 
-        theme(plot.title = element_text(hjust = 0.5))
+          xlab = "Weight (logarithmic)", ylab = "Counts")
+        if (theme.bw == TRUE) {
+          p <- p + theme_bw()
+        }
+        p <- p + theme(plot.title = element_text(hjust = 0.5))
+                
 
         if (is.null(xlim) == FALSE) {
             p <- p + coord_cartesian(xlim = xlim)
@@ -1543,7 +1587,7 @@ plot.tjbal <- function(x,
         if (!stat %in% c("mean","sd")) {
             stop("Wrong specification for \"stat\".")
         }
-        if (x$Ntr == 1 & stat =="sd") {
+        if (Ntr == 1 & stat =="sd") {
             stop("Standard deviation does not exist with one treated unit.")
         }
 
@@ -1555,7 +1599,11 @@ plot.tjbal <- function(x,
         var <- factor(var, levels = var[nvar:1])
         if (stat == "mean") {
            diff <- c(bal$diff.pre, bal$diff.pst)
-           xlab <- "Standardized Difference in Means"
+           if (Ntr > 1) {
+              xlab <- "Standardized Difference in Means"
+           } else if (Ntr == 1) {
+              xlab <- "Difference in Means / |Treated Mean|"
+           }
         } else if (stat == "sd") {
            diff <- c((bal$sd.co.pre-bal$sd.tr)/bal$sd.tr, (bal$sd.co.pst-bal$sd.tr)/bal$sd.tr)
            xlab <- "Standardized Difference in Standard Deviations"
@@ -1565,19 +1613,33 @@ plot.tjbal <- function(x,
         size <- 1
         stroke <- .8*size
         colors <- c("#E69F00", "#56B4E9")
-        p <- ggplot(data = newbal, aes(y = var, x = diff, group = group)) + 
-        theme(panel.grid.major = element_line(color = "gray87"),
-          panel.grid.minor = element_line(color = "gray90"),
-          panel.background = element_rect(fill = "white", color = "black"),
-          axis.text.x = element_text(color = "black"),
+        p <- ggplot(data = newbal, aes(y = var, x = diff, group = group))        
+        if (is.null(xlim) == TRUE) {
+            maxv <- max(abs(diff))
+            xlim <- c(-maxv, maxv)
+        } 
+        p <- p + coord_cartesian(xlim = xlim)
+        # p <- p + 
+        # theme(panel.grid.major = element_line(color = "gray87"),
+        #   panel.grid.minor = element_line(color = "gray90"),
+        #   panel.background = element_rect(fill = "white", color = "black"),
+        #   axis.text.x = element_text(color = "black"),
+        #   axis.text.y = element_text(color = "black"),
+        #   plot.title = element_text(hjust = 0.5),
+        #   legend.title = element_blank(),
+        #   legend.position = legend.pos
+        #   )
+        if (theme.bw == TRUE) {
+          p <- p + theme_bw()
+        }
+        p <- p + theme(axis.text.x = element_text(color = "black"),
           axis.text.y = element_text(color = "black"),
           plot.title = element_text(hjust = 0.5),
           legend.title = element_blank(),
           legend.position = legend.pos
-          ) + 
-        labs(y = "", x = xlab)   +
-        scale_color_manual(values = colors) 
-        p <- p + geom_vline(xintercept = 0, linetype = 1, color = "gray5")
+          )
+        p <- p + labs(y = "", x = xlab) + scale_color_manual(values = colors) 
+        p <- p + geom_vline(xintercept = 0, linetype = 1, colour = line.color, size = 2)
         p <- p + geom_point(aes(shape = group, color = group),
           size = 4*size, stroke = stroke, na.rm = TRUE)
 

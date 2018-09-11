@@ -15,7 +15,7 @@ importFrom("ggplot2", "geom_boxplot", "geom_density", "geom_tile",
 		   "scale_color_discrete", "scale_color_manual", "ggplotGrob", 
            "guide_legend", "margin", "guides","xlab","ylab","qplot",
            "element_rect", "element_line","element_text","element_blank")
-importFrom("plyr","ddply")
+importFrom("plyr","ddply",".","numcolwise")
 importFrom("KBAL","kbal")
 
 
