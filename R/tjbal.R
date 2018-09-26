@@ -21,6 +21,7 @@ tjbal <- function(
     whiten=FALSE,
     test = FALSE, ## test different sigmas
     nsigma = 16,
+    kbal.step = 1,
     print.baltable = TRUE, # print out table table
     bootstrap = FALSE, ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
@@ -50,6 +51,7 @@ tjbal.formula <- function(
     whiten=FALSE,
     test = FALSE, ## test different sigmas
     nsigma = 16,
+    kbal.step = 1,
     print.baltable = TRUE, # print out table table
     bootstrap = FALSE, ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
@@ -80,7 +82,7 @@ tjbal.formula <- function(
     out <- tjbal.default(data = data, Y = Yname,
                           D = Dname, X = Xname,
                           X.avg.time, index, Y.match.periods, demean, kernel, sigma,
-                          maxnumdims, method, whiten, test, nsigna, print.baltable, 
+                          maxnumdims, method, whiten, test, nsigma, print.baltable, 
                           bootstrap, conf.lvl, nboots, parallel, cores)
     
     out$call <- match.call()
@@ -106,6 +108,7 @@ tjbal.default <- function(
     whiten=FALSE,
     test = FALSE, ## test different sigmas
     nsigma = 16,
+    kbal.step = 1,
     print.baltable = TRUE, # print out table table
     bootstrap = FALSE, ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
@@ -124,6 +127,8 @@ tjbal.default <- function(
         warning("Not a data frame.")
         data <- as.data.frame(data)
     }
+    data <- droplevels(data)
+
     ## index
     if (length(index) != 2 | sum(index %in% colnames(data)) != 2) {
         stop("\"index\" option misspecified. Try, for example, index = c(\"unit.id\", \"time\").")
@@ -305,15 +310,15 @@ tjbal.default <- function(
         bal.out <- tjbalance(data = data.wide, Y = Yname, D = "treat", X = Xname,
             Y.match.periods = Y.match.periods, Ttot = Ttot, Tpre = Tpre, unit = "id", 
             demean = demean, kernel = kernel, sigma = sigma, maxnumdims = maxnumdims, 
-            method=method,whiten = whiten, test = test, nsigma = nsigma,
+            method=method,whiten = whiten, test = test, nsigma = nsigma, kbal.step = kbal.step,
             bootstrap = bootstrap, nboots = nboots, conf.lvl = conf.lvl, parallel = parallel, cores = cores) 
 
     } else { ## will not be able to give uncertainty estimates
 
         bal.out <- tjbalance.mult(data = data.wide, Y = Yname, D = "treat", X = Xname,
             Y.match.periods = Y.match.periods, Ttot = Ttot, unit = "id", 
-            demean = demean, kernel = kernel, sigma = sigma, maxnumdims = maxnumdims, 
-            method=method, whiten = whiten, test = test, nsigma = nsigma) 
+            demean = demean, kernel = kernel, sigma = sigma, kbal.step = kbal.step,
+            maxnumdims = maxnumdims, method=method, whiten = whiten, test = test, nsigma = nsigma) 
     }
 
     out <- c(list(sameT0 = sameT0), bal.out)
@@ -356,6 +361,7 @@ tjbalance <- function(
     whiten=FALSE,
     test = FALSE, ## test different sigmas
     nsigma = 16,
+    kbal.step = 1,
     conf.lvl = 0.95,
     print.baltable = TRUE, # print balance table 
     bootstrap = FALSE, ## uncertainty via bootstrap
@@ -379,11 +385,13 @@ tjbalance <- function(
     if (is.null(Y.match.periods)==TRUE) {
         Y.match.periods <- Tpre
     } else {
-        if (Y.match.periods == "none") {
-            Y.match.periods <- NULL
-            demean <- TRUE
-            excludeY <- TRUE
-        } 
+        if (length(Y.match.periods)==1) {
+            if (Y.match.periods == "none") {
+                Y.match.periods <- NULL
+                demean <- TRUE
+                excludeY <- TRUE
+            } 
+        }        
     }    
 
     ## outcome variable names (wide form)
@@ -447,7 +455,7 @@ tjbalance <- function(
             kbal.out <- kbal(X = data[,matchvar],
                 D = data[,D], method=method,
                 sigma=sigma[i], maxnumdims = maxnumdims,
-                linkernel = (1-kernel))
+                linkernel = (1-kernel), incrementby = kbal.step)
             if (kbal.out$dist.record==999) {
                 L1.ratio <- 1
             } else {
@@ -490,6 +498,7 @@ tjbalance <- function(
     
     # ATT
     names.co <- data[data[,D]==0, unit]
+    names(weights.co) <- names.co
     att <- apply(data[, Y.target] * w, 2, sum)
     att.avg <- mean(att[Y.target.pst])
 
@@ -551,7 +560,7 @@ tjbalance <- function(
                     data.tmp <- data[sample.id, ]
                     K.boot <- K[sample.id, sample.id]                                
                     kbal.boot <- kbal(X = data.tmp[, matchvar], D = data.tmp[, D], K = K.boot,
-                        method=method, linkernel = (1-kernel))
+                        method=method, linkernel = (1-kernel), incrementby = kbal.step)
                     w.boot <-  rep(1/Ntr, N)
                     w.boot[data.tmp[,D] == 0] <- kbal.boot$w[data.tmp[,D] == 0]/Nco*(-1)  # controls add up to -1;   
                 }
@@ -764,7 +773,8 @@ tjbalance.mult <- function(
     whiten=FALSE,
     test = TRUE, ## test different sigmas
     sigma = NULL, ## tuning parameters
-    nsigma = 16  
+    nsigma = 16,
+    kbal.step = 1  
     ) { 
 
     TT <- length(Ttot)
@@ -789,33 +799,28 @@ tjbalance.mult <- function(
     weights.co <- matrix(NA, length(id.co), length(T0.unique))
     rownames(weights.co) <- data$id[id.co]
     colnames(weights.co) <- T0.names
-    sub.gaps <- sub.Ytr.avg <- sub.Yct.avg <- matrix(NA, TT, length(T0.unique))
-    rownames(sub.gaps) <- rownames(sub.Ytr.avg) <- rownames(sub.Yct.avg) <- Ttot
-    colnames(sub.gaps) <- colnames(sub.Ytr.avg) <- colnames(sub.Yct.avg) <- T0.names
-    sub.ntr <- sub.gaps.adj <- matrix(0, TT.adj, length(T0.unique)) ## number of treated units for each subgroup
-    rownames(sub.ntr) <- rownames(sub.gaps.adj) <- time.adj
-    colnames(sub.ntr) <- colnames(sub.gaps.adj) <- T0.names
+    sub.att <- sub.Ytr.avg <- sub.Yct.avg <- matrix(NA, TT, length(T0.unique))
+    rownames(sub.att) <- rownames(sub.Ytr.avg) <- rownames(sub.Yct.avg) <- Ttot
+    colnames(sub.att) <- colnames(sub.Ytr.avg) <- colnames(sub.Yct.avg) <- T0.names
+    sub.ntr <- sub.att.adj <- matrix(0, TT.adj, length(T0.unique)) ## number of treated units for each subgroup
+    rownames(sub.ntr) <- rownames(sub.att.adj) <- time.adj
+    colnames(sub.ntr) <- colnames(sub.att.adj) <- T0.names
     sigmas.out <- L1 <- success <- rep(0, length(T0.unique)) 
 
         ## loop over different timings
     for (i in 1:length(T0.unique)) {
 
         T0 <- T0.unique[i]
-        this.tr <- id.tr[which(T0.all == T0)]    
+        this.tr <- which(T0.all == T0)    
 
         Tpre <- Ttot[1:T0]
         Tpst <- Ttot[(T0+1):TT]
         T.mid <- floor(median(Tpre))
 
-            ## remove other treated 
-        if (length(this.tr)==1) {
-            ## walk around a bug in ebal
-            data.tjbal <- data.wide[c(id.co, this.tr, this.tr),] # duplicate this.tr
-        } else {
-            data.tjbal <- data.wide[c(id.co, this.tr),]
-        }
-
-            ## tuning parameter
+        ## remove other treated 
+        data.tjbal <- data[c(id.co, this.tr),]
+        
+        ## tuning parameter
         if (is.null(sigma)==TRUE) {
             sigma <- NULL
         } else {
@@ -831,27 +836,27 @@ tjbalance.mult <- function(
                maxnumdims = (length(id.co)-1))
             , file = NULL)        
 
-            ## save
+        ## save
         L1[i] <- tjbal.out$L1.ratio
         sigmas.out[i] <- tjbal.out$sigma.best
         success[i] <- tjbal.out$success
 
         weights.co[,i] <- tjbal.out$weights.co
-        sub.Ytr.avg[,i] <- tjbal.out$avg.Y.tr
-        sub.Yct.avg[,i] <- tjbal.out$avg.Y.ct
-        gap <- tjbal.out$gap
-        sub.gaps[,i] <- gap
+        sub.Ytr.avg[,i] <- tjbal.out$Y.bar[,1]
+        sub.Yct.avg[,i] <- tjbal.out$Y.bar[,2]
+        att <- tjbal.out$att
+        sub.att[,i] <- att
 
-            ## save gaps (realigned based on T0)        
+        ## save ATT (realigned based on T0)        
         fill.start <- T0.max-T0+1
-        fill.end <- fill.start + length(gap) -1 
+        fill.end <- fill.start + length(att) -1 
         sub.ntr[fill.start:fill.end, i] <- T0.count[i]   
-        sub.gaps.adj[fill.start:fill.end, i] <- gap
+        sub.att.adj[fill.start:fill.end, i] <- att
     }
     ntreated <- rowSums(sub.ntr) # how the number of units changes over adjusted time
-    gap <- rowSums(sub.gaps.adj * sub.ntr)/ntreated
+    att <- rowSums(sub.att.adj * sub.ntr)/ntreated
     names(ntreated) <- names(att) <- time.adj
-    sub.gaps.adj[sub.ntr==0] <- NA
+    sub.att.adj[sub.ntr==0] <- NA
 
     ## save results
     out <- list(
@@ -872,11 +877,11 @@ tjbalance.mult <- function(
         names.co = colnames(weights.co),
         sub.Ytr.avg = sub.Ytr.avg,
         sub.Yct.avg = sub.Yct.avg,
-        sub.gaps = sub.gaps,
+        sub.att = sub.att,
         sub.ntr = sub.ntr,
-        sub.gaps.adj = sub.gaps.adj,
+        sub.att.adj = sub.att.adj,
         ntreated = ntreated,
-        gap = gap,
+        att = att,
         success = success,
         sigma.best = sigmas.out,           
         L1.ratio = L1
@@ -930,6 +935,8 @@ plot.tjbal <- function(x,
     raw = "none",
     wmin = -20, ## minimal log weights
     stat = "mean",
+    trim = TRUE, ## trim control group in ct plot
+    trim.wtot = 0.9, ## show controls whose weights sum up to a number
     theme.bw = TRUE, ## black/white or gray theme
     axis.adjust = FALSE,
     ...){
@@ -943,10 +950,10 @@ plot.tjbal <- function(x,
     ATT <- NULL
     CI.lower <- NULL
     CI.upper <- NULL
-    co5 <- NULL
-    co95 <- NULL
-    tr5 <- NULL
-    tr95 <- NULL
+    co.lower <- NULL
+    co.upper <- NULL
+    tr.lower <- NULL
+    tr.upper <- NULL
     group <- NULL
     L1 <- NULL
     out <- NULL
@@ -1002,6 +1009,15 @@ plot.tjbal <- function(x,
             raw <- "none" 
         }        
     }
+    if (is.null(trim.wtot)==FALSE) {
+        if (is.numeric(trim.wtot)==FALSE) {
+            stop("\"trim.w\" is not numeric.")
+        } else {
+            if (trim.wtot <0 | trim.wtot > 1) {
+                stop("\"trim.w\" must be between 0 and 1.")
+            }
+        }
+    }
     if (is.null(main)==FALSE) {
         if (is.character(main) == FALSE) {
             stop("\"main\" is not a string.")
@@ -1043,6 +1059,9 @@ plot.tjbal <- function(x,
     Nco <- x$Nco
     N <- x$N 
     time <- x$Ttot
+    w.co <- x$weights.co
+    id.co <- x$id.co
+    id.tr <- x$id.tr
     
    
     ## parameters
@@ -1153,7 +1172,17 @@ plot.tjbal <- function(x,
         
     } else if (type=="counterfactual") { 
 
-        if (length(x$id.tr) == 1| x$sameT0==TRUE) { # same/single treatment timing
+        if (Ntr == 1| x$sameT0==TRUE) { # same/single treatment timing
+
+            if (trim == TRUE & raw %in% c("band","all")) {
+                Nco <-sum(1 - (cumsum(sort(w.co,decreasing = TRUE))>trim.wtot)) + 1  # how many control units left
+                trim.id<- order(w.co, decreasing = TRUE)[1:Nco]
+                Y.co <- Y.co[trim.id, ,drop = FALSE]
+                id.co <- id.co[trim.id]
+                co.label <- paste0("Heavily Weighted Controls (",floor(trim.wtot*100),"% weights)")
+            } else {
+                co.label <- "Controls"
+            }
 
             ## axes labels
             if (is.null(xlab)==TRUE) {
@@ -1167,7 +1196,12 @@ plot.tjbal <- function(x,
                 ylab <- NULL
             }
 
-            maintext <- "Treated and Counterfactual Averages"
+            if (Ntr == 1) {
+                maintext <- "Treated and Counterfactual Trajectories"
+            } else {
+                maintext <- "Treated and Counterfactual Averages"
+            }
+
             if (raw == "none") {
                 data <- cbind.data.frame("time" = rep(time[show],2),
                  "outcome" = c(Yb[show,1],
@@ -1198,7 +1232,11 @@ plot.tjbal <- function(x,
 
                 ## legend
                 set.limits = c("tr","co")
-                set.labels = c("Treated Average", "Estimated Y(0) Average")
+                if (Ntr == 1) {
+                    set.labels = c("Treated", "Estimated Y(0)")
+                } else {
+                    set.labels = c("Treated Average", "Estimated Y(0) Average")
+                }
                 set.colors = c("black","steelblue")
                 set.linetypes = c("solid","longdash")
                 set.linewidth = rep(line.width[1],2)
@@ -1222,15 +1260,28 @@ plot.tjbal <- function(x,
 
             } else if  (raw == "band") {
 
-                Y.tr.90 <- t(apply(Y.tr, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
-                Y.co.90 <- t(apply(Y.co, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                if (trim == TRUE) {
+                    Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                    Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                    band.label <- "Controls 5-95% Quantiles"
+                } else {
+                    Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0,1),na.rm=TRUE))
+                    Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0,1),na.rm=TRUE))
+                    band.label <- "Heavily Weighted Controls"
+                }
 
+                
                 data <- cbind.data.frame("time" = rep(time[show],2),
-                 "outcome" = c(Yb[show,1], Yb[show,2]),"type" = c(rep("tr",nT),rep("co",nT)))
+                   "outcome" = c(Yb[show,1], Yb[show,2]),"type" = c(rep("tr",nT),rep("co",nT)))
 
-                data.band <- cbind.data.frame(time, Y.tr.90, Y.co.90)[show,]
-                colnames(data.band) <- c("time","tr5","tr95","co5","co95")
-
+                if (Ntr == 1) {
+                    data.band <- cbind.data.frame(time, Y.co.band)[show,]
+                    colnames(data.band) <- c("time","co.lower","co.upper")
+                } else {
+                    data.band <- cbind.data.frame(time, Y.tr.band, Y.co.band)[show,]
+                    colnames(data.band) <- c("time","tr.lower","tr.upper","co.lower","co.upper")
+                }
+                
                 ## theme 
                 p <- ggplot(data)
                 if (theme.bw == TRUE) {
@@ -1251,20 +1302,30 @@ plot.tjbal <- function(x,
                    colour = type,
                    size = type,
                    linetype = type))
-                        ## band
-                p <- p + geom_ribbon(data = data.band,
-                 aes(ymin = tr5, ymax = tr95, x=time),
-                 alpha = 0.15, fill = "black") +
-                geom_ribbon(data = data.band,
-                    aes(ymin = co5, ymax = co95, x=time),
-                    alpha = 0.15, fill = "steelblue")
-
-                set.limits = c("tr","co","tr.band","co.band")
-                set.labels = c("Treated Average", "Estimated Y(0) Average",
-                   "Treated 5-95% Quantiles", "Controls 5-95% Quantiles")
-                set.colors = c("black","steelblue","#77777750","#4682B480")
-                set.linetypes = c("solid","longdash","solid","solid")
-                set.linewidth = c(rep(line.width[1],2),4,4)
+                ## band
+                if (Ntr == 1) {
+                    p <- p + geom_ribbon(data = data.band,
+                        aes(ymin = co.lower, ymax = co.upper, x=time),
+                        alpha = 0.15, fill = "steelblue")
+                    set.limits = c("tr","co","co.band")
+                    set.labels = c("Treated", "Estimated Y(0)",band.label)
+                    set.colors = c("black","steelblue","#77777750","#4682B480")
+                    set.linetypes = c("solid","longdash","solid")
+                    set.linewidth = c(rep(line.width[1],2),4)                    
+                } else {
+                    p <- p + geom_ribbon(data = data.band,
+                        aes(ymin = co.lower, ymax = co.upper, x=time),
+                        alpha = 0.15, fill = "steelblue") +
+                            geom_ribbon(data = data.band,
+                               aes(ymin = tr.lower, ymax = tr.upper, x=time),
+                               alpha = 0.15, fill = "black")
+                    set.limits = c("tr","co","tr.band","co.band")
+                    set.labels = c("Treated Average", "Estimated Y(0) Average",
+                     "Treated 5-95% Quantiles", "Controls 5-95% Quantiles")
+                    set.colors = c("black","steelblue","#77777750","#4682B480")
+                    set.linetypes = c("solid","longdash","solid","solid")
+                    set.linewidth = c(rep(line.width[1],2),4,4)        
+                }                
 
                 p <- p + scale_colour_manual(limits = set.limits,
                  labels = set.labels,
@@ -1286,11 +1347,19 @@ plot.tjbal <- function(x,
 
             } else if (raw == "all") { ## plot all the raw data
 
-                data <- cbind.data.frame("time" = rep(time[show],(2 + N)),
-                   "outcome" = c(Yb[show,1],Yb[show,2],c(t(Y.tr[,show])),c(t(Y.co[,show]))),
-                   "type" = c(rep("tr",nT), rep("co",nT), rep("raw.tr",(Ntr * nT)), rep("raw.co",(Nco * nT))),
-                   "id" = c(rep("tr",nT), rep("co",nT), rep(c(x$id.tr,x$id.co), each = nT))) 
+                if (Ntr == 1) {
+                    data <- cbind.data.frame("time" = rep(time[show],(2 + Nco)),
+                     "outcome" = c(Yb[show,1],Yb[show,2], c(t(Y.co[,show]))),
+                     "type" = c(rep("tr",nT), rep("co",nT), rep("raw.co",(Nco * nT))),
+                     "id" = c(rep("tr",nT), rep("co",nT), rep(id.co, each = nT))) 
+                } else {
+                    data <- cbind.data.frame("time" = rep(time[show],(2 + N)),
+                     "outcome" = c(Yb[show,1],Yb[show,2],c(t(Y.tr[,show])),c(t(Y.co[,show]))),
+                     "type" = c(rep("tr",nT), rep("co",nT), rep("raw.tr",(Ntr * nT)), rep("raw.co",(Nco * nT))),
+                     "id" = c(rep("tr",nT), rep("co",nT), rep(c(id.tr,id.co), each = nT))) 
+                }
 
+                
                 ## theme
                 p <- ggplot(data)
                 if (theme.bw == TRUE) {
@@ -1312,15 +1381,22 @@ plot.tjbal <- function(x,
                    linetype = type, group = id))
 
                 ## legend
-                set.limits = c("tr","co","raw.tr","raw.co")
-                set.labels = c("Treated Average",
-                   "Estimated Y(0) Average",
-                   "Treated Raw Data",
-                   "Controls Raw Data")
-                set.colors = c("black","steelblue","#77777750","#4682B410")
-                set.linetypes = c("solid","longdash","solid","solid")
-                set.linewidth = rep(line.width,each=2)
-
+                if (Ntr == 1) {
+                    set.limits = c("tr","co","raw.co")
+                    set.labels = c("Treated","Estimated Treated Y(0)",co.label)                
+                    set.colors = c("black","steelblue","#4682B430")
+                    set.linetypes = c("solid","longdash","solid")
+                    set.linewidth = line.width[c(1,1,2)]
+                } else {
+                    set.limits = c("tr","co","raw.tr","raw.co")
+                    set.labels = c("Treated Average",
+                     "Estimated Y(0) Average",
+                     "Treated", co.label)
+                    set.colors = c("black","steelblue","#77777750","#4682B430")
+                    set.linetypes = c("solid","longdash","solid","solid")
+                    set.linewidth = rep(line.width,each=2)
+                }
+                
                 p <- p + scale_colour_manual(limits = set.limits,
                    labels = set.labels,
                    values =set.colors) +
@@ -1329,16 +1405,27 @@ plot.tjbal <- function(x,
                   values = set.linetypes) +
                 scale_size_manual(limits = set.limits,
                   labels = set.labels,
-                  values = set.linewidth) +
-                guides(linetype = guide_legend(title=NULL, ncol=2),
-                 colour = guide_legend(title=NULL, ncol=2),
-                 size = guide_legend(title=NULL, ncol=2)) 
+                  values = set.linewidth)
+                if (Ntr ==1) {
+                    p <- p + 
+                    guides(linetype = guide_legend(title=NULL, ncol=3),
+                       colour = guide_legend(title=NULL, ncol=3),
+                       size = guide_legend(title=NULL, ncol=3)) 
+                } else {
+                    p <- p + 
+                    guides(linetype = guide_legend(title=NULL, ncol=2),
+                       colour = guide_legend(title=NULL, ncol=2),
+                       size = guide_legend(title=NULL, ncol=2)) 
+                }                
 
                 if (!is.numeric(time.label)) {
                     p <- p + 
                     scale_x_continuous(expand = c(0, 0), breaks = show[T.b], labels = time.label[T.b])
                 }
-            }   
+            }
+
+            # key width in legend
+            p <- p + theme(legend.key.width = unit(2.5,"line"))   
             
         } else { ## different treatment timing
             maintext <- "Treated and Counterfactual Averages"
@@ -1419,8 +1506,8 @@ plot.tjbal <- function(x,
                     
             } else if  (raw == "band") {
                     
-                Y.tr.90 <- t(apply(Y.tr.aug, 1, quantile, prob=c(0.05,0.95),na.rm=TRUE))
-                ## Y.co.90 <- t(apply(Y.co, 1, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                Y.tr.band <- t(apply(Y.tr.aug, 1, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                ## Y.co.band <- t(apply(Y.co, 1, quantile, prob=c(0.05,0.95),na.rm=TRUE))
                     
                 data <- cbind.data.frame("time" = rep(time[show],2),
                                          "outcome" = c(Yb[show,1],
@@ -1428,8 +1515,8 @@ plot.tjbal <- function(x,
                                          "type" = c(rep("tr",nT),
                                                     rep("co",nT)))
 
-                data.band <- cbind.data.frame(time, Y.tr.90)[show,]
-                colnames(data.band) <- c("time","tr5","tr95")
+                data.band <- cbind.data.frame(time, Y.tr.band)[show,]
+                colnames(data.band) <- c("time","tr.lower","tr.upper")
                     
                 ## theme 
                 p <- ggplot(data)
@@ -1453,7 +1540,7 @@ plot.tjbal <- function(x,
                                        linetype = type))
                 ## band
                 p <- p + geom_ribbon(data = data.band,
-                                     aes(ymin = tr5, ymax = tr95, x=time),
+                                     aes(ymin = tr.lower, ymax = tr.upper, x=time),
                                          alpha = 0.15, fill = "red")
 
                 set.limits = c("tr","co","tr.band")
