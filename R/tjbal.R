@@ -1266,10 +1266,10 @@ plot.tjbal <- function(x,
                     tr.band.label <- "Treated 5-95% Quantiles"
                     co.band.label <- "Controls 5-95% Quantiles"
                 } else {
-                    Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0,1),na.rm=TRUE))
-                    Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0,1),na.rm=TRUE))
-                    tr.band.label <- "Treated"
-                    co.band.label <- paste0("Heavily Weighted Controls (",floor(trim.wtot*100),"% weights)")
+                    Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                    Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                    tr.band.label <- "Treated 5-95% Quantiles"
+                    co.band.label <- paste0("Heavily Weighted Controls 5-95% Quantiles (",floor(trim.wtot*100),"% weights)")
                 }
 
                 
