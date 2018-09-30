@@ -1260,7 +1260,7 @@ plot.tjbal <- function(x,
 
             } else if  (raw == "band") {
 
-                if (trim == TRUE) {
+                if (trim == FALSE) {
                     Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
                     Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
                     band.label <- "Controls 5-95% Quantiles"
