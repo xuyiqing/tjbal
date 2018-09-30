@@ -1267,7 +1267,7 @@ plot.tjbal <- function(x,
                 } else {
                     Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0,1),na.rm=TRUE))
                     Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0,1),na.rm=TRUE))
-                    band.label <- "Heavily Weighted Controls"
+                    band.label <- paste0("Heavily Weighted Controls (",floor(trim.wtot*100),"% weights)")
                 }
 
                 
