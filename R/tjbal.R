@@ -82,8 +82,8 @@ tjbal.formula <- function(
     out <- tjbal.default(data = data, Y = Yname,
                           D = Dname, X = Xname,
                           X.avg.time, index, Y.match.periods, demean, kernel, sigma,
-                          maxnumdims, method, whiten, test, nsigma, print.baltable, 
-                          bootstrap, conf.lvl, nboots, parallel, cores)
+                          maxnumdims, method, whiten, test, nsigma, kbal.step, print.baltable, 
+                          bootstrap, conf.lvl, nboots, parallel, cores, seed)
     
     out$call <- match.call()
     out$formula <- formula
