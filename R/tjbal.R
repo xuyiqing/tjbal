@@ -1263,11 +1263,13 @@ plot.tjbal <- function(x,
                 if (trim == FALSE) {
                     Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
                     Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
-                    band.label <- "Controls 5-95% Quantiles"
+                    tr.band.label <- "Treated 5-95% Quantiles"
+                    co.band.label <- "Controls 5-95% Quantiles"
                 } else {
                     Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0,1),na.rm=TRUE))
                     Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0,1),na.rm=TRUE))
-                    band.label <- paste0("Heavily Weighted Controls (",floor(trim.wtot*100),"% weights)")
+                    tr.band.label <- "Treated"
+                    co.band.label <- paste0("Heavily Weighted Controls (",floor(trim.wtot*100),"% weights)")
                 }
 
                 
@@ -1308,8 +1310,8 @@ plot.tjbal <- function(x,
                         aes(ymin = co.lower, ymax = co.upper, x=time),
                         alpha = 0.15, fill = "steelblue")
                     set.limits = c("tr","co","co.band")
-                    set.labels = c("Treated", "Estimated Y(0)",band.label)
-                    set.colors = c("black","steelblue","#77777750","#4682B480")
+                    set.labels = c("Treated", "Estimated Y(0)",co.band.label)
+                    set.colors = c("black","steelblue","#4682B480")
                     set.linetypes = c("solid","longdash","solid")
                     set.linewidth = c(rep(line.width[1],2),4)                    
                 } else {
@@ -1321,7 +1323,7 @@ plot.tjbal <- function(x,
                                alpha = 0.15, fill = "black")
                     set.limits = c("tr","co","tr.band","co.band")
                     set.labels = c("Treated Average", "Estimated Y(0) Average",
-                     "Treated 5-95% Quantiles", "Controls 5-95% Quantiles")
+                     tr.band.label, co.band.label)
                     set.colors = c("black","steelblue","#77777750","#4682B480")
                     set.linetypes = c("solid","longdash","solid","solid")
                     set.linewidth = c(rep(line.width[1],2),4,4)        
