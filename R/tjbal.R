@@ -226,6 +226,9 @@ tjbal.default <- function(
     colnames(outcome) <- paste0(Yname,Ttot) ## including both pre and post
 
     ## covariates (allow missing, but non-missing values have to be same for each unit)
+    if (class(data[,id])!="factor") { ## to avoid an error with ddply
+        data[,id] <- as.factor(data[,id])        
+    }
     if (p > 0) {
         if (is.null(X.avg.time)==FALSE) {
             if (sameT0 == FALSE) {
