@@ -123,9 +123,12 @@ tjbal.default <- function(
     ##-------------------------------##  
 
     
-    if (is.data.frame(data) == FALSE) {
-        warning("Not a data frame.")
+    if (class(data)[1] == "tbl_df") {
+        #warning("Transforming a tibble into a data frame.")
         data <- as.data.frame(data)
+    }
+    if (is.data.frame(data)==FALSE) {
+        stop("Not a data frame")
     }
     data <- droplevels(data)
 
@@ -324,7 +327,7 @@ tjbal.default <- function(
             maxnumdims = maxnumdims, method=method, whiten = whiten, test = test, nsigma = nsigma) 
     }
 
-    out <- c(list(sameT0 = sameT0), bal.out)
+    out <- c(list(sameT0 = sameT0, index = index), bal.out)
     out$call <- match.call()
     class(out) <- "tjbal"
     return(out)
@@ -519,7 +522,7 @@ tjbalance <- function(
 
     ## faster routine with perfect mean balancing
     if (is.null(matchvar)==FALSE) {
-        if (kernel == FALSE & abs(L1.ratio)<1e-4) { 
+        if (kernel == FALSE & abs(L1.ratio)<1e-4 & Nco > 50*length(matchvar)) { # control is much bigger than features
             fastlinear <- TRUE
             ## deal with colinearity 
             if (demean == TRUE && length(Y.match.periods)==T0) {
@@ -1177,12 +1180,17 @@ plot.tjbal <- function(x,
 
         if (Ntr == 1| x$sameT0==TRUE) { # same/single treatment timing
 
+            if (length(x$matchvar)==0) { ## no balancing
+                trim = FALSE
+            }
+
             if (trim == TRUE & raw %in% c("band","all")) {
                 Nco <-sum(1 - (cumsum(sort(w.co,decreasing = TRUE))>trim.wtot)) + 1  # how many control units left
                 trim.id<- order(w.co, decreasing = TRUE)[1:Nco]
                 Y.co <- Y.co[trim.id, ,drop = FALSE]
                 id.co <- id.co[trim.id]
                 co.label <- paste0("Heavily Weighted Controls (",floor(trim.wtot*100),"% weights)")
+                N <- Ntr + Nco
             } else {
                 co.label <- "Controls"
             }
@@ -1252,9 +1260,9 @@ plot.tjbal <- function(x,
                 scale_size_manual(limits = set.limits,
                   labels = set.labels,
                   values = set.linewidth) +
-                guides(linetype = guide_legend(title=NULL, ncol=2),
-                   colour = guide_legend(title=NULL, ncol=2),
-                   size = guide_legend(title=NULL, ncol=2)) 
+                guides(linetype = guide_legend(title=NULL, nrow=1),
+                   colour = guide_legend(title=NULL, nrow=1),
+                   size = guide_legend(title=NULL, nrow=1)) 
 
                 if (!is.numeric(time.label)) {
                     p <- p + 
@@ -1314,7 +1322,7 @@ plot.tjbal <- function(x,
                         alpha = 0.15, fill = "steelblue")
                     set.limits = c("tr","co","co.band")
                     set.labels = c("Treated", "Estimated Y(0)",co.band.label)
-                    set.colors = c("black","steelblue","#4682B480")
+                    set.colors = c("black","steelblue","#4682B470")
                     set.linetypes = c("solid","longdash","solid")
                     set.linewidth = c(rep(line.width[1],2),4)                    
                 } else {
@@ -1327,7 +1335,7 @@ plot.tjbal <- function(x,
                     set.limits = c("tr","co","tr.band","co.band")
                     set.labels = c("Treated Average", "Estimated Y(0) Average",
                      tr.band.label, co.band.label)
-                    set.colors = c("black","steelblue","#77777750","#4682B480")
+                    set.colors = c("black","steelblue","#77777750","#4682B470")
                     set.linetypes = c("solid","longdash","solid","solid")
                     set.linewidth = c(rep(line.width[1],2),4,4)        
                 }                
@@ -1341,9 +1349,9 @@ plot.tjbal <- function(x,
                 scale_size_manual(limits = set.limits,
                   labels = set.labels,
                   values = set.linewidth) +
-                guides(linetype = guide_legend(title=NULL, ncol=2),
-                   colour = guide_legend(title=NULL, ncol=2),
-                   size = guide_legend(title=NULL, ncol=2)) 
+                guides(linetype = guide_legend(title=NULL, nrow=2, byrow=TRUE),
+                   colour = guide_legend(title=NULL, nrow=2, byrow=TRUE),
+                   size = guide_legend(title=NULL, nrow=2, byrow=TRUE)) 
 
                 if (!is.numeric(time.label)) {
                     p <- p + 
@@ -1386,10 +1394,17 @@ plot.tjbal <- function(x,
                    linetype = type, group = id))
 
                 ## legend
+                if (Nco >= 50) {
+                    co.color = "#4682B430"
+                } else if (Nco >= 20) {
+                    co.color = "#4682B450"
+                } else {
+                    co.color = "#4682B470"
+                }     
                 if (Ntr == 1) {
                     set.limits = c("tr","co","raw.co")
-                    set.labels = c("Treated","Estimated Treated Y(0)",co.label)                
-                    set.colors = c("black","steelblue","#4682B430")
+                    set.labels = c("Treated","Estimated Treated Y(0)",co.label) 
+                    set.colors = c("black","steelblue",co.color)
                     set.linetypes = c("solid","longdash","solid")
                     set.linewidth = line.width[c(1,1,2)]
                 } else {
@@ -1397,7 +1412,7 @@ plot.tjbal <- function(x,
                     set.labels = c("Treated Average",
                      "Estimated Y(0) Average",
                      "Treated", co.label)
-                    set.colors = c("black","steelblue","#77777750","#4682B430")
+                    set.colors = c("black","steelblue","#77777750",co.color)
                     set.linetypes = c("solid","longdash","solid","solid")
                     set.linewidth = rep(line.width,each=2)
                 }
@@ -1413,14 +1428,14 @@ plot.tjbal <- function(x,
                   values = set.linewidth)
                 if (Ntr ==1) {
                     p <- p + 
-                    guides(linetype = guide_legend(title=NULL, ncol=3),
+                    guides(linetype = guide_legend(title=NULL, nrow=1),
                        colour = guide_legend(title=NULL, ncol=3),
                        size = guide_legend(title=NULL, ncol=3)) 
                 } else {
                     p <- p + 
-                    guides(linetype = guide_legend(title=NULL, ncol=2),
-                       colour = guide_legend(title=NULL, ncol=2),
-                       size = guide_legend(title=NULL, ncol=2)) 
+                    guides(linetype = guide_legend(title=NULL, nrow=2, byrow=TRUE),
+                       colour = guide_legend(title=NULL, nrow=2, byrow=TRUE),
+                       size = guide_legend(title=NULL, nrow=2, byrow=TRUE)) 
                 }                
 
                 if (!is.numeric(time.label)) {
@@ -1505,9 +1520,9 @@ plot.tjbal <- function(x,
                     scale_size_manual(limits = set.limits,
                                       labels = set.labels,
                                       values = set.linewidth) +
-                    guides(linetype = guide_legend(title=NULL, ncol=2),
-                            colour = guide_legend(title=NULL, ncol=2),
-                            size = guide_legend(title=NULL, ncol=2)) 
+                    guides(linetype = guide_legend(title=NULL, nrow=1),
+                            colour = guide_legend(title=NULL, nrow=1),
+                            size = guide_legend(title=NULL, nrow=1)) 
                     
             } else if  (raw == "band") {
                     
@@ -1565,9 +1580,9 @@ plot.tjbal <- function(x,
                     scale_size_manual(limits = set.limits,
                                       labels = set.labels,
                                       values = set.linewidth) +
-                    guides(linetype = guide_legend(title=NULL, ncol=2),
-                           colour = guide_legend(title=NULL, ncol=2),
-                           size = guide_legend(title=NULL, ncol=2)) 
+                    guides(linetype = guide_legend(title=NULL, nrow=2, byrow=TRUE),
+                           colour = guide_legend(title=NULL, nrow=2, byrow=TRUE),
+                           size = guide_legend(title=NULL, nrow=2, byrow=TRUE)) 
                     
             } else if (raw == "all") { ## plot all the raw data
                     
@@ -1621,9 +1636,9 @@ plot.tjbal <- function(x,
                     scale_size_manual(limits = set.limits,
                                       labels = set.labels,
                                       values = set.linewidth) +
-                    guides(linetype = guide_legend(title=NULL, ncol=2),
-                           colour = guide_legend(title=NULL, ncol=2),
-                           size = guide_legend(title=NULL, ncol=2)) 
+                    guides(linetype = guide_legend(title=NULL, nrow=2, byrow=TRUE),
+                           colour = guide_legend(title=NULL, nrow=2, byrow=TRUE),
+                           size = guide_legend(title=NULL, nrow=2, byrow=TRUE)) 
             }
 
             ## title
