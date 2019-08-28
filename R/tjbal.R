@@ -13,6 +13,8 @@ tjbal <- function(
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
     Y.match.periods = NULL,
+    npre.fixed = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    npre = NULL,
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
@@ -43,6 +45,8 @@ tjbal.formula <- function(
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
     Y.match.periods = NULL,
+    npre.fixed = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    npre = NULL,
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
@@ -81,7 +85,7 @@ tjbal.formula <- function(
     ## run the model
     out <- tjbal.default(data = data, Y = Yname,
                           D = Dname, X = Xname,
-                          X.avg.time, index, Y.match.periods, demean, kernel, sigma,
+                          X.avg.time, index, Y.match.periods, npre.fixed, npre, demean, kernel, sigma,
                           maxnumdims, method, whiten, test, nsigma, kbal.step, print.baltable, 
                           bootstrap, conf.lvl, nboots, parallel, cores, seed)
     
@@ -100,6 +104,8 @@ tjbal.default <- function(
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
     Y.match.periods = NULL,
+    npre.fixed = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    npre = NULL,
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
@@ -314,7 +320,7 @@ tjbal.default <- function(
     if (sameT0 == TRUE) {
 
         bal.out <- tjbalance(data = data.wide, Y = Yname, D = "treat", X = Xname,
-            Y.match.periods = Y.match.periods, Ttot = Ttot, Tpre = Tpre, unit = "id", 
+            Y.match.periods = Y.match.periods, npre = npre, Ttot = Ttot, Tpre = Tpre, unit = "id", 
             demean = demean, kernel = kernel, sigma = sigma, maxnumdims = maxnumdims, 
             method=method,whiten = whiten, test = test, nsigma = nsigma, kbal.step = kbal.step,
             bootstrap = bootstrap, nboots = nboots, conf.lvl = conf.lvl, parallel = parallel, cores = cores) 
@@ -322,7 +328,7 @@ tjbal.default <- function(
     } else { ## will not be able to give uncertainty estimates
 
         bal.out <- tjbalance.mult(data = data.wide, Y = Yname, D = "treat", X = Xname,
-            Y.match.periods = Y.match.periods, Ttot = Ttot, unit = "id", 
+            Y.match.periods = Y.match.periods, npre.fixed = npre.fixed, npre = npre, Ttot = Ttot, unit = "id", 
             demean = demean, kernel = kernel, sigma = sigma, kbal.step = kbal.step,
             maxnumdims = maxnumdims, method=method, whiten = whiten, test = test, nsigma = nsigma) 
     }
@@ -356,6 +362,7 @@ tjbalance <- function(
     D,
     X = NULL,
     Y.match.periods = NULL,
+    npre = NULL,
     Ttot,
     Tpre,
     unit,
@@ -770,6 +777,8 @@ tjbalance.mult <- function(
     D,
     X,
     Y.match.periods = NULL,
+    npre.fixed = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    npre = NULL,
     Ttot,
     unit,
     demean = FALSE, # take out pre-treatment unit mean
@@ -786,6 +795,8 @@ tjbalance.mult <- function(
     TT <- length(Ttot)
     id.tr <- which(data$tr == 1)
     id.co <- which(data$tr == 0)
+    Ntr <- length(id.tr)
+    Nco <- length(id.co)
 
     ## parse multiple treatment timing
     T0.all <- data$T0
@@ -813,13 +824,22 @@ tjbalance.mult <- function(
     colnames(sub.ntr) <- colnames(sub.att.adj) <- T0.names
     sigmas.out <- L1 <- success <- rep(0, length(T0.unique)) 
 
-        ## loop over different timings
+    ## loop over different timings
     for (i in 1:length(T0.unique)) {
 
         T0 <- T0.unique[i]
         this.tr <- which(T0.all == T0)    
 
-        Tpre <- Ttot[1:T0]
+        if (npre.fixed == TRUE) {
+            if (is.null(npre) == TRUE) {
+                Tpre <- Ttot[(T0 - T0.min + 1):T0]
+            } else {
+                Tpre <- Ttot[(T0 - npre + 1):T0]
+            }
+        } else {
+            Tpre <- Ttot[1:T0]
+        }
+        
         Tpst <- Ttot[(T0+1):TT]
         T.mid <- floor(median(Tpre))
 
@@ -868,12 +888,12 @@ tjbalance.mult <- function(
     out <- list(
         id.tr = id.tr,
         id.co = id.co,
-        Y.co = Y.co,
-        Y.tr = Y.tr,
+        # Y.co = Y.co,
+        # Y.tr = Y.tr,
         Ttot = Ttot,
-        Tpre = Tpre,
-        Tpst = Tpst,
-        N = N,
+        # Tpre = Tpre,
+        # Tpst = Tpst,
+        # N = N,
         Ntr = Ntr,
         Nco = Nco,            
         T0 = T0.unique, 
