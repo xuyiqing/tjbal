@@ -13,21 +13,17 @@ tjbal <- function(
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
     Y.match.periods = NULL,
-    npre.fixed = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    Y.match.npre = TRUE, # fix the number of pre-periods for balancing when T0s are different
     npre = NULL,
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
-    maxnumdims = NULL,
-    method="ebal",
-    whiten=FALSE,
-    test = FALSE, ## test different sigmas
-    nsigma = 16,
     kbal.step = 1,
     print.baltable = TRUE, # print out table table
-    bootstrap = FALSE, ## uncertainty via bootstrap
+    vce = "jackknife", ## uncertainty estimates
     conf.lvl = 0.95, ## confidence interval
-    nboots = 500, ## number of bootstrap runs
+    nsims = NULL, ## number of bootstrap runs
+    nboots = NULL,
     parallel = TRUE, ## parallel computing
     cores = 4,
     seed = 1234
@@ -45,21 +41,18 @@ tjbal.formula <- function(
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
     Y.match.periods = NULL,
-    npre.fixed = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    Y.match.npre = TRUE, # fix the number of pre-periods for balancing when T0s are different
     npre = NULL,
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
     maxnumdims = NULL,
-    method="ebal",
-    whiten=FALSE,
-    test = FALSE, ## test different sigmas
-    nsigma = 16,
     kbal.step = 1,
     print.baltable = TRUE, # print out table table
-    bootstrap = FALSE, ## uncertainty via bootstrap
+    vce = "jackknife", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
-    nboots = 500, ## number of bootstrap runs
+    nsims = NULL, ## number of bootstrap runs
+    nboots = NULL, ## same as above
     parallel = TRUE, ## parallel computing
     cores = 4,
     seed = 1234
@@ -85,9 +78,12 @@ tjbal.formula <- function(
     ## run the model
     out <- tjbal.default(data = data, Y = Yname,
                           D = Dname, X = Xname,
-                          X.avg.time, index, Y.match.periods, npre.fixed, npre, demean, kernel, sigma,
-                          maxnumdims, method, whiten, test, nsigma, kbal.step, print.baltable, 
-                          bootstrap, conf.lvl, nboots, parallel, cores, seed)
+                          X.avg.time = X.avg.time, index = index, 
+                          Y.match.periods= Y.match.periods, Y.match.npre = Y.match.npre, npre = npre, 
+                          demean = demean, kernel = kernel, sigma = sigma,
+                          maxnumdims = maxnumdims, kbal.step = kbal.step, print.baltable = print.baltable, 
+                          vce = vce, conf.lvl = conf.lvl, nsims = nsims, nboots = nboots, parallel = parallel, cores = cores, 
+                          seed = seed)
     
     out$call <- match.call()
     out$formula <- formula
@@ -104,21 +100,19 @@ tjbal.default <- function(
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
     Y.match.periods = NULL,
-    npre.fixed = TRUE, # fix the number of pre-periods for balancing when T0s are different
-    npre = NULL,
+    Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
     maxnumdims = NULL,
-    method="ebal",
-    whiten=FALSE,
     test = FALSE, ## test different sigmas
     nsigma = 16,
     kbal.step = 1,
     print.baltable = TRUE, # print out table table
-    bootstrap = FALSE, ## uncertainty via bootstrap
+    vce = "jackknife", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
-    nboots = 500, ## number of bootstrap runs
+    nsims = NULL, ## number of bootstrap runs
+    nboots = NULL, ## same as above
     parallel = TRUE, ## parallel computing
     cores = 4,
     seed = 1234
@@ -141,6 +135,16 @@ tjbal.default <- function(
     ## index
     if (length(index) != 2 | sum(index %in% colnames(data)) != 2) {
         stop("\"index\" option misspecified. Try, for example, index = c(\"unit.id\", \"time\").")
+    }   
+
+    if (vce == "boot") {vce <- "bootstrap"}
+    if (vce == "jack") {vce <- "jackknife"}
+    if (vce == "fixed") {vce <- "fixed.weights"}
+
+    if (is.null(nsims)==TRUE & is.null(nboots)==FALSE) {
+        nsims <- nboots
+    } else {
+        nsims <- 500
     }
 
 
@@ -203,13 +207,13 @@ tjbal.default <- function(
     id.tr <- which(treat == 1)
     id.co <- which(treat == 0)
     Ntr <- length(id.tr)
-    Nco <- length(id.co)
+    Nco <- length(id.co)    
 
     ## check the number of treated units
     if (Ntr <= 5) {
-        warning("Too few treated unit(s). Uncertainty estimates not provided.")
-        bootstrap <- FALSE
-    }
+        cat("Too few treated unit(s). Uncertainty estimates not provided.")
+        vce <- "none"
+    }    
 
     ## treatment timing
     T0 <- apply((D==0),2,sum) 
@@ -229,10 +233,10 @@ tjbal.default <- function(
         Tpre <- Ttot[1:unique(T0.tr)]        
     }
 
-
     ## outcome variable
     outcome <- matrix(data[,Yname],N, TT, byrow = TRUE)
-    colnames(outcome) <- paste0(Yname,Ttot) ## including both pre and post
+    Y.var <- paste0(Yname, Ttot) ## outcome variable names (wide form)
+    colnames(outcome) <- Y.var ## including both pre and post
 
     ## covariates (allow missing, but non-missing values have to be same for each unit)
     if (class(data[,id])!="factor") { ## to avoid an error with ddply
@@ -308,495 +312,80 @@ tjbal.default <- function(
     
     ## prepare "wide" form data
     if (p>0) {
-        data.wide <- cbind.data.frame(id = units, treat = treat, T0 = T0, outcome, Xvar)
+        data.wide <- cbind.data.frame(id = 1:N, unit = units, treat = treat, T0 = T0, outcome, Xvar)
     } else {
-        data.wide <- cbind.data.frame(id = units, treat = treat, T0 = T0, outcome)
+        data.wide <- cbind.data.frame(id = 1:N, unit = units, treat = treat, T0 = T0, outcome)
     } 
+
+ 
+    
 
     #######################
     ## balancing
     #######################
 
     if (sameT0 == TRUE) {
-
-        bal.out <- tjbalance(data = data.wide, Y = Yname, D = "treat", X = Xname,
-            Y.match.periods = Y.match.periods, npre = npre, Ttot = Ttot, Tpre = Tpre, unit = "id", 
-            demean = demean, kernel = kernel, sigma = sigma, maxnumdims = maxnumdims, 
-            method=method,whiten = whiten, test = test, nsigma = nsigma, kbal.step = kbal.step,
-            bootstrap = bootstrap, nboots = nboots, conf.lvl = conf.lvl, parallel = parallel, cores = cores) 
-
-    } else { ## will not be able to give uncertainty estimates
-
-        bal.out <- tjbalance.mult(data = data.wide, Y = Yname, D = "treat", X = Xname,
-            Y.match.periods = Y.match.periods, npre.fixed = npre.fixed, npre = npre, Ttot = Ttot, unit = "id", 
-            demean = demean, kernel = kernel, sigma = sigma, kbal.step = kbal.step,
-            maxnumdims = maxnumdims, method=method, whiten = whiten, test = test, nsigma = nsigma) 
-    }
+        bal.out <- tjbal.single(data = data.wide, Y = Yname, D = "treat", X = Xname,
+            Y.match.periods = Y.match.periods, Y.match.npre = Y.match.npre, 
+            Ttot = Ttot, Tpre = Tpre, unit = "id", 
+            demean = demean, kernel = kernel, maxnumdims = maxnumdims,
+            sigma = sigma, kbal.step = kbal.step, print.baltable = print.baltable,
+            vce = vce, conf.lvl = conf.lvl,
+            nsims = nsims, parallel = parallel, cores = cores, seed = seed)         
+    } else {        
+        bal.out <- tjbal.multi(data = data.wide, Y = Yname, D = "treat", X = Xname,
+            Y.match.periods = Y.match.periods, Y.match.npre = Y.match.npre, 
+            Ttot = Ttot, unit = "id", 
+            demean = demean, kernel = kernel, maxnumdims = maxnumdims,
+            sigma = sigma, kbal.step = kbal.step, 
+            vce = vce, conf.lvl = conf.lvl,
+            nsims = nsims, parallel = parallel, cores = cores, seed = seed)  
+    } 
+    
+ 
 
     out <- c(list(sameT0 = sameT0, index = index), bal.out)
     out$call <- match.call()
     class(out) <- "tjbal"
     return(out)
-
 }
-
 
 
 ###################################################
-#### trajectory balancing with one treatment timing
+#### tjbal.multi: allow multiple treatment timing
 ###################################################
 
 
-linearweights  <- function(X, D, ebal.tol=1e-4){
-    N <- length(D)
-    Ntr <- sum(D)
-    ebal.out <- ebalance(Treatment = D, X= X, constraint.tolerance=ebal.tol, max.iterations = 5000,print.level=-1)
-    w <- rep(1, N)
-    w[D==0] <- ebal.out$w * (-1)  ## non-convergence can occur if max.iteration is set too small
-    return(w/Ntr) # treated add up to 1; controls add up to -1
-}
-
-tjbalance <- function(
-    data, ## wide form
-    Y,
-    D,
-    X = NULL,
-    Y.match.periods = NULL,
-    npre = NULL,
-    Ttot,
-    Tpre,
-    unit,
-    demean = FALSE, # take out pre-treatment unit mean
-    kernel = FALSE, # kernel method
-    sigma=NULL,
-    maxnumdims = NULL,
-    method="ebal",
-    whiten=FALSE,
-    test = FALSE, ## test different sigmas
-    nsigma = 16,
-    kbal.step = 1,
-    conf.lvl = 0.95,
-    print.baltable = TRUE, # print balance table 
-    bootstrap = FALSE, ## uncertainty via bootstrap
-    nboots = 500, ## number of bootstrap runs
-    parallel = FALSE, ## parallel computing
-    cores = 4,
-    seed = 1234    
-    ){
-
-    
-    ## process data
-    N <- dim(data)[1]
-    Ntr <-  length(which(data[,D]==1))
-    Nco <- N - Ntr
-    TT <- length(Ttot)
-    T0 <- length(Tpre)
-    Tpst <- setdiff(Ttot, Tpre)
-
-    ## default: match on all pre-treatment periods
-    excludeY <- FALSE
-    if (is.null(Y.match.periods)==TRUE) {
-        Y.match.periods <- Tpre
-    } else {
-        if (length(Y.match.periods)==1) {
-            if (Y.match.periods == "none") {
-                Y.match.periods <- NULL
-                demean <- TRUE
-                excludeY <- TRUE
-            } 
-        }        
-    }    
-
-    ## outcome variable names (wide form)
-    Y.var <- paste0(Y, Ttot)
-    
-    ## demean
-    if (demean == TRUE) { 
-        Y.dm.var <- paste0(Y,".dm",Ttot)
-        Ypre.mean <- apply(data[, paste0(Y, Tpre), drop = FALSE], 1, mean) # N*1
-        outcome.dm <- data[, Y.var, drop = FALSE] - matrix(Ypre.mean, N, TT) # N * TT
-        colnames(outcome.dm) <- Y.dm.var
-        data <- cbind.data.frame(data, outcome.dm)              
-        Y.match <- paste0(Y,".dm",Y.match.periods)
-        Y.target <- Y.dm.var
-        Y.target.pst <- paste0(Y,".dm",Tpst)
-    } else {
-        Y.match <- paste0(Y, Y.match.periods)
-        Y.target <- Y.var
-        Y.target.pst <- paste0(Y, Tpst)
-    }
-    if (excludeY == TRUE) {
-        Y.match <- NULL
-    }
-    matchvar <- c(Y.match, X)
-    
-    ## default weights
-    w <- rep(NA, N)
-    weights.tr <- rep(1/Ntr, Ntr) 
-    weights.co <- rep(1/Nco, Nco)
-    w[data[,D] == 1] <- weights.tr  
-    w[data[,D] == 0] <- weights.co * (-1)  # controls add up to -1;
-
-    ## have something to balance on
-    if (is.null(matchvar)==FALSE) { 
-
-        cat("\nSeek balance on:\n")
-        cat(paste(matchvar, collapse = ", "),"\n\nOptimization:\n")
-
-        ## tuning parameter
-        if (is.null(sigma)){
-            if (test == TRUE) {
-                ## sigmas for testing
-                sigma <- exp(seq(0,log(1500),length.out = nsigma)) 
-            } else {
-                sigma <- length(matchvar)
-                nsigma <- 1
-            } 
-        } else {
-            nsigma <- length(sigma)
-        }
-        if (kernel == FALSE) {
-            sigma <- 1
-            nsigma <- 1
-        }
-
-        ## balancing
-        L1.ratios <- rep(NA, nsigma)
-        L1.ratio.best <- 1
-        kbal.out.best <- sigma.best <- NULL
-        for (i in 1:nsigma) {
-            kbal.out <- kbal(X = data[,matchvar],
-                D = data[,D], method=method,
-                sigma=sigma[i], maxnumdims = maxnumdims,
-                linkernel = (1-kernel), incrementby = kbal.step)
-            if (kbal.out$dist.record==999) {
-                L1.ratio <- 1
-            } else {
-                L1.before <- kbal.out$L1_orig
-                L1.after <- kbal.out$L1_kbal
-                L1.ratio <- L1.after/L1.before            
-            }
-            L1.ratios[i] <- L1.ratio        
-            if (L1.ratio - L1.ratio.best < 1e-5) {
-                L1.ratio.best <- L1.ratio
-                kbal.out.best <- kbal.out
-                sigma.best <- sigma[i]                      
-            } 
-        }
-        if (nsigma > 1) {
-            test.out <- cbind(sigma, L1.ratios)
-            colnames(test.out) <- c("sigma","L1.ratio")
-            print(round(test.out, 2)) 
-        }
-
-        ## if success
-        if (1 - L1.ratio.best >1e-5) {
-            success <- 1
-            ndims <- kbal.out.best$numdims
-            cat(paste0("sigma* = ", round(sigma.best,1),"; L1.ratio% = ", 
-                sprintf("%.3f",L1.ratio.best*100),"; num.dims = ",ndims,"\n"))
-
-            ## weights
-            weights.tr <- rep(1/Ntr, Ntr) # treated add up to 1; 
-            weights.co <- kbal.out.best$w[data[,D] == 0]/Nco # controls add up to 1;
-            w[data[,D] == 1] <- weights.tr  
-            w[data[,D] == 0] <- weights.co * (-1)  # controls add up to -1;
-
-        } else {
-            success <- 0
-            cat("\nSolution not found. Equal weights are being used.\n")            
-        }
-
-    }
-    
-    # ATT
-    names.co <- data[data[,D]==0, unit]
-    names(weights.co) <- names.co
-    att <- apply(data[, Y.target] * w, 2, sum)
-    att.avg <- mean(att[Y.target.pst])
-
-
-    # ## treated and control data
-    id.co <- which(data[,D]==0)
-    id.tr <- which(data[,D]==1)
-    Y.tr = data[id.tr, Y.var, drop = FALSE]
-    Y.co = data[id.co, Y.var, drop = FALSE]
-
-    Y.tr.bar <- apply(data[id.tr, Y.var], 2, mean, na.rm=TRUE)
-    Y.co.bar <- apply(data[id.co, Y.var], 2, mean, na.rm=TRUE)
-    Y.ct.bar <- Y.tr.bar - att
-    Y.bar <- cbind(Y.tr.bar,Y.ct.bar, Y.co.bar)
-
-    ## faster routine with perfect mean balancing
-    if (is.null(matchvar)==FALSE) {
-        if (kernel == FALSE & abs(L1.ratio)<1e-4 & Nco > 50*length(matchvar)) { # control is much bigger than features
-            fastlinear <- TRUE
-            ## deal with colinearity 
-            if (demean == TRUE && length(Y.match.periods)==T0) {
-                matchvar <- c(Y.match[-1],X)            
-            }
-            # standardize
-            X.tmp <- data[,matchvar, drop = FALSE]
-            for (i in 1:ncol(X.tmp)) {
-                X.tmp[,i] <- X.tmp[,i]/sd(X.tmp[,i],na.rm=TRUE) 
-            }
-        } else {
-            fastlinear <- FALSE
-            K <- kbal.out.best$K        
-        }
-    }    
-
-    ## bootstrap
-    if (bootstrap == TRUE) {
-
-        ## seed
-        if (is.null(seed) == FALSE) {
-            if (is.numeric(seed) == FALSE) {
-                stop("seed should be a number.")
-            }
-        } else {
-            seed <- 1234
-        }
-        set.seed(seed)            
-
-        one.boot <- function() {
-            sample.id <- c(sample(id.tr,Ntr, replace = TRUE),
-                sample(id.co, Nco, replace = TRUE))
-            ## weights: treated add up to 1; controls add up to -1; sum is zero
-            if (is.null(matchvar) == TRUE) {
-                w.boot <- rep(1/Ntr, N)
-                w.boot[data[sample.id,D] == 0] <- rep(-1/Nco, Nco)
-            } else {
-                if (fastlinear == TRUE) {
-                    w.boot <- linearweights(X = X.tmp[sample.id,], D = data[sample.id, D])
-                } else {                  
-                    data.tmp <- data[sample.id, ]
-                    K.boot <- K[sample.id, sample.id]                                
-                    kbal.boot <- kbal(X = data.tmp[, matchvar], D = data.tmp[, D], K = K.boot,
-                        method=method, linkernel = (1-kernel), incrementby = kbal.step)
-                    w.boot <-  rep(1/Ntr, N)
-                    w.boot[data.tmp[,D] == 0] <- kbal.boot$w[data.tmp[,D] == 0]/Nco*(-1)  # controls add up to -1;   
-                }
-            }
-            
-            ## ATT
-            att <- apply(data[sample.id, Y.target] * w.boot, 2, sum)
-            att.avg <- mean(att[Y.target.pst])
-            out <- list(att = att, att.avg = att.avg)
-            return(out)            
-        }
-
-        ## Storing bootstrapped estimates
-        att.boot<-matrix(0,TT,nboots)
-        att.avg.boot<-matrix(0,nboots,1)  
-
-        ## computing
-        cat("\nBootstrapping...")
-        if (parallel == TRUE) {
-            ## prepare
-            if (is.null(cores) == TRUE) {
-                cores <- detectCores()
-            }
-            para.clusters <- makeCluster(cores)
-            registerDoParallel(para.clusters)
-            ## start    
-            cat("Parallel computing...") 
-            boot.out <- foreach(j=1:nboots, 
-                .inorder = FALSE,
-                .export = c("ebalance","linearweights"),
-                .packages = c("KBAL")
-                ) %dopar% {
-                return(one.boot())
-            }
-            stopCluster(para.clusters)
-            ## save results
-            for (j in 1:nboots) { 
-                att.boot[,j]<-boot.out[[j]]$att
-                att.avg.boot[j,]<-boot.out[[j]]$att.avg                  
-            } 
-        } else { ## single core
-            for (j in 1:nboots) { 
-                boot <- one.boot() 
-                att.boot[,j]<-boot$att
-                att.avg.boot[j,]<-boot$att.avg                
-                ## report progress
-                if (kernel == FALSE) {
-                    if (j%%50==0)  {cat(".")}
-                } else {
-                    cat(j,"\n")
-                } 
-            }  
-        }
-        ## end of bootstrapping
-        cat("\n")
-
-        ####################################
-        ## Variance and CIs
-        ####################################
-
-        ## function to get two-sided p-values
-        get.pvalue <- function(vec) {
-            if (NaN%in%vec|NA%in%vec) {
-                nan.pos <- is.nan(vec)
-                na.pos <- is.na(vec)
-                pos <- c(which(nan.pos),which(na.pos))
-                vec.a <- vec[-pos]
-                a <- sum(vec.a >= 0)/(length(vec)-sum(nan.pos|na.pos)) * 2
-                b <- sum(vec.a <= 0)/(length(vec)-sum(nan.pos|na.pos)) * 2  
-            } else {
-                a <- sum(vec >= 0)/length(vec) * 2
-                b <- sum(vec <= 0)/length(vec) * 2  
-            }
-            return(min(as.numeric(min(a, b)),1))
-        }
-
-        ## For ATT estimates
-        conf.lvl.lb <- (1 - conf.lvl)/2
-        conf.lvl.ub <- conf.lvl.lb + conf.lvl
-
-        CI.att <- t(apply(att.boot, 1, function(vec) 
-            quantile(vec,c(conf.lvl.lb, conf.lvl.ub), na.rm=TRUE)))
-        se.att <- apply(att.boot, 1, function(vec) sd(vec, na.rm=TRUE))
-        pvalue.att <- apply(att.boot, 1, get.pvalue)    
-        pvalue.att[which(abs(att)<1e-5 & abs(se.att)<1e-5)] <- NA
-        est.att <- cbind(att, se.att, CI.att, pvalue.att, ntreated = rep(Ntr,TT))
-        est.att[abs(est.att)<1e-5] <- 0
-        colnames(est.att) <- c("ATT", "S.E.", "CI.lower", "CI.upper",
-         "p.value", "n.Treated")
-        rownames(est.att) <- Ttot    
-
-        ## average (over time) ATT
-        CI.avg <- quantile(att.avg.boot, c(conf.lvl.lb, conf.lvl.ub), na.rm=TRUE)
-        se.avg <- sd(att.avg.boot, na.rm=TRUE)
-        pvalue.avg <- get.pvalue(att.avg.boot)
-        est.avg <- t(as.matrix(c(att.avg, se.avg, CI.avg, pvalue.avg)))
-        colnames(est.avg) <- c("ATT.avg", "S.E.", "CI.lower", "CI.upper", "p.value")
-
-        ## storage
-        out.inference <- list(
-            est.att = est.att, 
-            est.avg = est.avg, 
-            att.boot = att.boot, 
-            att.avg.boot = att.avg.boot
-            )      
-    }    
-
-    ## balance table
-    if (is.null(matchvar)==FALSE) {
-        if (success == 1) {
-            weighted.sd <- function(vec, w) {sqrt(sum(w * (vec - weighted.mean(vec,w))^2))}
-            if (Ntr>1) {
-                # treated
-                mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
-                sd.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, sd)
-                # control
-                mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean) 
-                sd.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, sd)
-                # weighted control 
-                mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
-                sd.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.sd, weights.co) 
-                ## standardized difference
-                # diff.pre <- (mean.tr - mean.co.pre)/sqrt(sd.tr^2 + sd.co.pre^2)
-                # diff.pst <- (mean.tr - mean.co.pst)/sqrt(sd.tr^2 + sd.co.pst^2)
-                # normalize by SD of the treated 
-                diff.pre <- (mean.tr - mean.co.pre)/sd.tr
-                diff.pst <- (mean.tr - mean.co.pst)/sd.tr                
-                bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, sd.tr, sd.co.pre,  sd.co.pst, diff.pre, diff.pst)
-            } else {
-                # treated
-                mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
-                # control
-                mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean)
-                # weighted control 
-                mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
-                # difference in means
-                diff.pre <- (mean.tr - mean.co.pre)/abs(mean.tr)
-                diff.pst <- (mean.tr - mean.co.pst)/abs(mean.tr)
-                bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, diff.pre, diff.pst)
-            }
-            if (print.baltable==TRUE) {
-                cat("\nBalance Table\n")
-                print(round(bal.table, 4))   
-            }
-        }
-    }
-
-    out <- list(data.wide = data,
-            id.tr = id.tr,
-            id.co = id.co,
-            Y.tr = Y.tr,
-            Y.co = Y.co,
-            weights.co = weights.co, # Nco * 1 vector
-            names.co = names.co,
-            Ttot = Ttot,
-            Tpre = Tpre,
-            Tpst = Tpst,
-            T0 = T0,
-            N = N,
-            Ntr = Ntr,
-            Nco = Nco,                
-            matchvar = matchvar,
-            Y.bar = Y.bar, 
-            att = att,
-            att.avg = att.avg)
-    
-    if (is.null(matchvar)==FALSE) {
-
-        out <- c(out,
-            list(success = success,
-            L1.before = kbal.out.best$L1_orig,
-            L1.after = kbal.out.best$L1_kbal,
-            L1.ratio = L1.ratio.best,
-            min90 = kbal.out.best$min90,
-            ndims = kbal.out.best$numdims,
-            sigma.best = sigma.best))
-
-        if (success==1) {
-            out <- c(out, list(bal.table = bal.table))
-        }
-
-        if (nsigma>1) {
-            out <- c(out, list(test.out = test.out))
-        }
-    } 
-    
-    if (bootstrap == TRUE) {
-        out <- c(out, out.inference)
-    }       
-    return(out)
-}
-
-
-########################################################
-#### trajectory balancing with multiple treatment timing
-########################################################
-
-tjbalance.mult <- function(
+tjbal.multi <- function(
     data, ## data in wide form
     Y,
     D,
     X,
     Y.match.periods = NULL,
-    npre.fixed = TRUE, # fix the number of pre-periods for balancing when T0s are different
-    npre = NULL,
+    Y.match.npre = TRUE, # fix the number of pre-periods for balancing when T0s are different
     Ttot,
     unit,
     demean = FALSE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
-    maxnumdims = NULL,
-    method="ebal",
-    whiten=FALSE,
-    test = TRUE, ## test different sigmas
-    sigma = NULL, ## tuning parameters
-    nsigma = 16,
-    kbal.step = 1  
+    maxnumdims = NULL,    
+    sigma = NULL, ## tuning parameters    
+    kbal.step = 1,
+    vce = "fixed.weights", ## uncertainty via bootstrap
+    conf.lvl = 0.95, ## confidence interval
+    nsims = 500, ## number of bootstrap runs
+    parallel = TRUE, ## parallel computing
+    cores = 4,
+    seed = 1234  
     ) { 
+
 
     TT <- length(Ttot)
     id.tr <- which(data$tr == 1)
     id.co <- which(data$tr == 0)
     Ntr <- length(id.tr)
     Nco <- length(id.co)
+    Y.var  <- paste0(Y, Ttot)
+    units <- as.character(unique(data$unit))
 
     ## parse multiple treatment timing
     T0.all <- data$T0
@@ -807,100 +396,418 @@ tjbalance.mult <- function(
     T0.count <- as.numeric(tb.T0)
     T0.max <- max(T0.tr)
     T0.min <- min(T0.tr)
-    T0.names <- paste0("T0=",T0.unique)
+    T0.names <- paste0("T0 = ",Ttot[T0.unique])
+    nT0 <- length(T0.unique)
 
     ## recenter based on treatment timing
     time.adj <- c(-(T0.max -1) : (TT-T0.min))
     TT.adj <- length(time.adj)
-        ## storage
-    weights.co <- matrix(NA, length(id.co), length(T0.unique))
+    
+    ## storage
+
+    weights.co <- matrix(NA, length(id.co), nT0) # id.co * T0.unique
     rownames(weights.co) <- data$id[id.co]
     colnames(weights.co) <- T0.names
-    sub.att <- sub.Ytr.avg <- sub.Yct.avg <- matrix(NA, TT, length(T0.unique))
+    sub.att <- sub.Ytr.avg <- sub.Yct.avg <- matrix(NA, TT, nT0)
+    sub.att.avg <- rep(NA, nT0)
     rownames(sub.att) <- rownames(sub.Ytr.avg) <- rownames(sub.Yct.avg) <- Ttot
-    colnames(sub.att) <- colnames(sub.Ytr.avg) <- colnames(sub.Yct.avg) <- T0.names
-    sub.ntr <- sub.att.adj <- matrix(0, TT.adj, length(T0.unique)) ## number of treated units for each subgroup
-    rownames(sub.ntr) <- rownames(sub.att.adj) <- time.adj
-    colnames(sub.ntr) <- colnames(sub.att.adj) <- T0.names
-    sigmas.out <- L1 <- success <- rep(0, length(T0.unique)) 
+    names(sub.att.avg) <- colnames(sub.att) <- colnames(sub.Ytr.avg) <- colnames(sub.Yct.avg) <- T0.names
+    ## number of treated units for each subgroup
+    sub.ntr.pst <- sub.ntr <- sub.att.adj <- matrix(0, TT.adj, nT0) 
+    # naming
+    rownames(sub.ntr.pst) <- rownames(sub.ntr) <- rownames(sub.att.adj) <- time.adj
+    colnames(sub.ntr.pst) <- colnames(sub.ntr) <- colnames(sub.att.adj) <- T0.names
+    bias.ratios <- success <- rep(0, length(T0.unique))    
 
-    ## loop over different timings
-    for (i in 1:length(T0.unique)) {
+
+    ## save subsets of the original data and K matrix
+    K.list <- data.list <- vector("list", length = nT0)  
+    ## save number of dimensions
+    ndims <- rep(NA, nT0)      
+    
+    cat("\nBalancing...\n")        
+    for (i in 1:nT0) {
 
         T0 <- T0.unique[i]
-        this.tr <- which(T0.all == T0)    
+        id.tr.one <- which(T0.all == T0)        
+        Tpre <- Ttot[1:T0]
+        Ntr.one <- length(id.tr.one)
+        N.one <- Ntr.one + Nco
 
-        if (npre.fixed == TRUE) {
-            if (is.null(npre) == TRUE) {
-                Tpre <- Ttot[(T0 - T0.min + 1):T0]
-            } else {
-                Tpre <- Ttot[(T0 - npre + 1):T0]
-            }
+
+        if (is.null(Y.match.periods)==FALSE) {
+            Tpre <- setdiff(Tpre, Y.match.periods)
         } else {
-            Tpre <- Ttot[1:T0]
-        }
-        
+            if (is.null(Y.match.npre) == FALSE) {
+                Tpre <- Ttot[max(0,(T0 - Y.match.npre + 1)):T0]
+            }
+        }              
         Tpst <- Ttot[(T0+1):TT]
-        T.mid <- floor(median(Tpre))
+        #T.mid <- floor(median(Tpre))
 
         ## remove other treated 
-        data.tjbal <- data[c(id.co, this.tr),]
+        data.oneT0 <- data[c(id.co,id.tr.one),]
         
-        ## tuning parameter
-        if (is.null(sigma)==TRUE) {
-            sigma <- NULL
-        } else {
-            sigma <- sigma[i]
+        if (demean == TRUE) { 
+            Y.dm.var <- paste0(Y,".dm",Ttot)
+            Ypre.mean <- apply(data.oneT0[, paste0(Y, Tpre), drop = FALSE], 1, mean) # N*1
+            outcome.dm <- data.oneT0[, paste0(Y, Ttot), drop = FALSE] - matrix(Ypre.mean, N.one, TT) # N * TT
+            colnames(outcome.dm) <- Y.dm.var
+            data.oneT0 <- cbind.data.frame(data.oneT0, outcome.dm) 
+            Y.match <- paste0(Y,".dm",Tpre)
+            Y.target <- paste0(Y,".dm",Ttot)
+            Y.target.pst <- paste0(Y,".dm",Tpst)
+        } else {            
+            Y.match <- paste0(Y, Tpre)
+            Y.target <- paste0(Y, Ttot)
+            Y.target.pst <- paste0(Y, Tpst)
         }
+        if (is.null(Y.match.periods)==FALSE) {
+            if (Y.match.periods == "none") { # do not match on pre-treatment Y
+                Y.match <- NULL
+            }
+        } 
+        matchvar <- c(Y.match, X)
+        # Save this subsample in data.list           
+        data.list[[i]] <- data.oneT0
 
-            ## trajectory balancing
-        cat("Subgroup: T0 =",T0,"\n")
-        tmp <- capture.output(
-            tjbal.out <- tjbalance(data = data.tjbal, Y = Y, D = D, X = X,
-               Y.match.periods = Tpre, Ttot = Ttot, Tpre = Tpre, method = method,
-               unit = "id", demean = TRUE, sigma = sigma, nsigma = 16, kernel == kernel,
-               maxnumdims = (length(id.co)-1))
-            , file = NULL)        
+        ## default weights
+        w <- rep(1/Ntr.one, N.one)
+        w[1:Nco] <- rep(-1/Nco, Nco) 
 
-        ## save
-        L1[i] <- tjbal.out$L1.ratio
-        sigmas.out[i] <- tjbal.out$sigma.best
-        success[i] <- tjbal.out$success
+        ## trajectory balancing
+        cat(paste0("Subgroup T0 = ",T0,": "))
+        if (is.null(matchvar)==FALSE) { ## have something to balance on
+            tmp <- capture.output(
+                kbal.out <- kbal(allx = data.oneT0[,matchvar],
+                    treatment = data.oneT0$treat, b=sigma, maxnumdims = maxnumdims,
+                    linkernel = (1-kernel), incrementby = kbal.step,
+                    printprogress = FALSE, sampledinpop = FALSE)         
+                , file = NULL)
 
-        weights.co[,i] <- tjbal.out$weights.co
-        sub.Ytr.avg[,i] <- tjbal.out$Y.bar[,1]
-        sub.Yct.avg[,i] <- tjbal.out$Y.bar[,2]
-        att <- tjbal.out$att
+            if (kbal.out$earlyfail==TRUE) { 
+                bias.ratio <- 1
+            } else {
+                bias.ratio <- c(kbal.out$biasbound.opt/kbal.out$biasbound.orig)            
+            }
+
+
+            ## if success
+            if (kbal.out$earlyfail==FALSE) {
+                success <- 1
+                ndims[i] <- kbal.out$numdims
+                K.list[[i]] <- kbal.out$K # save kernel matrix
+                cat(paste0("bias.ratio = ", 
+                    sprintf("%.4f",bias.ratio),"; num.dims = ",ndims[i],"\n"))
+                ## weights
+                w.co <- kbal.out$w[1:Nco]/Nco                
+                w[1:Nco] <- w.co * (-1)                      
+            } else {
+                success <- 0                         
+            }  
+        }
+        
+        att <- apply(data.oneT0[, Y.target] * w, 2, sum)
+        success[i] <- success
+        weights.co[,i] <- w.co
+        bias.ratios[i] <- bias.ratio
+        
         sub.att[,i] <- att
+        sub.att.avg[i] <- mean(att[Y.target.pst])
+        sub.Ytr.avg[,i] <- apply(data[id.tr.one, Y.var, drop = FALSE], 2, mean, na.rm=TRUE)
+        sub.Yct.avg[,i] <- sub.Ytr.avg[,i] - att       
+       
 
         ## save ATT (realigned based on T0)        
         fill.start <- T0.max-T0+1
         fill.end <- fill.start + length(att) -1 
         sub.ntr[fill.start:fill.end, i] <- T0.count[i]   
         sub.att.adj[fill.start:fill.end, i] <- att
+       
     }
     ntreated <- rowSums(sub.ntr) # how the number of units changes over adjusted time
     att <- rowSums(sub.att.adj * sub.ntr)/ntreated
     names(ntreated) <- names(att) <- time.adj
+
+    # this matrix count the number of treated units for each T0 (post-treatment)
+    sub.ntr.pst <- sub.ntr
+    sub.ntr.pst[time.adj<=0,] <- 0 
+    
+    ## average effect (weighted by obs)
+    att.avg <- sum(sub.att.adj * sub.ntr.pst)/sum(sub.ntr.pst)
+
+    #######################################
+    ## Uncertainty Estimates via Jackknife
+    #######################################    
+
+    #######################
+    ## Jackknife
+    #######################
+
+    if (vce == "jackknife") {
+
+        # number of jackknife runs
+        if (nsims > Ntr) {
+            njacks <- Ntr
+        } else {
+            njacks <- nsims
+        }
+
+       
+
+        cat("\nJackknife...\n")
+        drop.id.pos <- sample(1:Ntr, njacks, replace = FALSE)              
+        drop.id <- id.tr[drop.id.pos]
+        drop.id.T0s <- T0.tr[drop.id.pos]   
+        drop.id.list <- split(drop.id, drop.id.T0s) # put drop id into different T0 groups
+
+        # save att and att.avg for each subgroup when one of the units from the group is dropped
+        sub.att.jack <- vector("list", length = nT0)
+        sub.att.avg.jack <- vector("list", length = nT0)
+        names(sub.att.avg.jack) <- names(sub.att.jack) <- colnames(sub.att)
+        # save att.adj and att.avg for all units for each jackknife run 
+        att.jack <- matrix(NA, length(att), njacks) 
+        rownames(att.jack) <- time.adj
+        att.avg.jack <- rep(NA, njacks)
+        names(att.avg.jack) <- colnames(att.jack) <- paste("Drop:",units[drop.id])
+        
+        ## prepare for parallel computing
+        if (parallel == TRUE & max(T0.unique)>=8) {                        
+            if (is.null(cores) == TRUE) {
+                cores <- detectCores()
+            }
+            para.clusters <- makeCluster(cores)
+            registerDoParallel(para.clusters)            
+        }
+
+        k <- 1
+        for (i in 1:nT0) {
+            cat("Dropping units from Subgroup T0 =",T0,"\n")
+            T0 <- T0.unique[i]
+            drop.id.oneT0 <- drop.id.list[[as.character(T0)]]
+
+            # this matrix count the number of treated units for each T0
+            sub.ntr.tmp <- sub.ntr
+            sub.ntr.tmp[,i] <- max(0,sub.ntr[,i]-1)
+            # this matrix count the number of treated units for each T0 (post-treatment)
+            sub.ntr.pst.tmp <- sub.ntr.pst
+            sub.ntr.pst.tmp[,i] <- max(0,sub.ntr.pst.tmp[,i]-1)
+
+            if (length(drop.id.oneT0) == 1) {
+                tmp <- matrix(NA, 1, 1)
+                colnames(tmp) <- paste("Drop:",units[drop.id.oneT0])
+                sub.att.jack[[i]] <- tmp
+                sub.att.avg.jack[[i]] <- tmp
+                # att.adj for this run
+                sub.att.adj.tmp <- sub.att.adj
+                sub.att.adj.tmp[,i] <- 0
+                att.jack[,k] <- rowSums(sub.att.adj.tmp * sub.ntr.tmp)/rowSums(sub.ntr.tmp)
+                # att.adj.avg for this run
+                att.avg.jack[k] <- sum(sub.att.adj.tmp * sub.ntr.pst.tmp)/sum(sub.ntr.pst.tmp)
+                # counter
+                k <- k + 1
+            } else { # more than one unit in this group 
+
+                one.jack <- function(data, K, id, ndims) {
+                        N <- nrow(data)
+                        Ntr <- N - Nco
+                        id <- which(data$id == id) # translate original id to new id
+                        N <- Ntr + Nco
+                        # weights: treated add up to 1; controls add up to -1; sum is zero
+                        w.jack <-  rep(1/(Ntr-1), (N-1))                  
+                        if (is.null(matchvar) == TRUE) { # no reweighting                         
+                            w.jack[1:Nco] <- rep(-1/Nco, Nco)
+                        } else {
+                            tmp <- capture.output(
+                                kbal.jack <- suppressWarnings(kbal(allx = data[-id, matchvar], treatment = data[-id, D],
+                                    linkernel = (1-kernel), incrementby = kbal.step, printprogress = FALSE,                    
+                                    K = K[-id,], minnumdims = max(0,ndims-5), maxnumdims = ndims,
+                                    sampledinpop=FALSE))
+                            , file = NULL)                
+                            w.jack[1:Nco] <- kbal.jack$w[1:Nco]/Nco*(-1)  # controls add up to -1;   
+                        }                      
+                        att <- apply(data[-id, Y.target] * w.jack, 2, sum)
+                        att.avg <- mean(att[Y.target.pst])
+                        out <- list(att = att, att.avg = att.avg)
+                        return(out)            
+                }
+
+                nid <- length(drop.id.oneT0) # number of treated units with one T0
+
+                # storage att and att.avg for this T0
+                sub.att.oneT0 <- matrix(NA,TT,nid)
+                rownames(sub.att.oneT0) <- Ttot
+                colnames(sub.att.oneT0) <- paste("Drop:",units[drop.id.oneT0])
+                sub.att.avg.oneT0 <- rep(NA,nid) 
+                names(sub.att.avg.oneT0) <- paste("Drop:",units[drop.id.oneT0])
+                # copy from previous result (will change one column)
+                sub.att.adj.tmp <- sub.att.adj
+                sub.att.adj.tmp[,i] <- 0
+                
+
+                ## computing
+                if (parallel == TRUE & nid >= 8) {
+                    
+                    ## start    
+                    cat("Parallel computing...") 
+                    jack.out <- foreach(j=1:nid, 
+                        .inorder = FALSE,
+                        .packages = c("KBAL")
+                        ) %dopar% {
+                        return(one.jack(data.list[[i]], K.list[[i]], drop.id.oneT0[j], ndims[i]))
+                    }
+                    
+                        ## save results
+                    for (j in 1:nid) { 
+                        sub.att.oneT0[,j] <- jack.out[[j]]$att
+                        sub.att.avg.oneT0[j] <- jack.out[[j]]$att.avg 
+                            # att.adj for this run (realigned based on T0)        
+                        fill.start <- T0.max-T0+1
+                        fill.end <- fill.start + TT -1 
+                        sub.att.adj.tmp[fill.start:fill.end, i] <- jack.out[[j]]$att
+                            # att.adj and att.avg for this run
+                        att.jack[,k] <- rowSums(sub.att.adj.tmp * sub.ntr.tmp)/rowSums(sub.ntr.tmp)
+                        att.avg.jack[k] <- sum(sub.att.adj.tmp * sub.ntr.pst.tmp)/sum(sub.ntr.pst.tmp)
+                            # counter
+                        k <- k + 1                
+                    }
+                } else { ## single core
+                    for (j in 1:nid) {                       
+
+                        jack <- one.jack(data = data.list[[i]], 
+                            K = K.list[[i]], id = drop.id.oneT0[j], ndims = ndims[i])
+
+                        sub.att.oneT0[,j] <- jack$att
+                        sub.att.avg.oneT0[j] <- jack$att.avg 
+                        # att.adj for this run (realigned based on T0)          
+                        fill.start <- T0.max-T0+1
+                        fill.end <- fill.start + TT -1 
+                        sub.att.adj.tmp[fill.start:fill.end, i] <- jack$att
+                        # att.adj and att.avg for this run
+                        att.jack[,k] <- rowSums(sub.att.adj.tmp * sub.ntr.tmp)/rowSums(sub.ntr.tmp)
+                        att.avg.jack[k] <- sum(sub.att.adj.tmp * sub.ntr.pst.tmp)/sum(sub.ntr.pst.tmp)
+                        # counter
+                        k <- k + 1 
+                        ## report progress
+                        if (kernel == FALSE) {if (j%%50==0)  {cat(".")}} 
+                    }  # end of single core loop
+                }  # end of T0 with more than one treated unit
+
+                sub.att.jack[[i]] <- sub.att.oneT0
+                sub.att.avg.jack[[i]] <- sub.att.avg.oneT0   
+
+            } # end of more than one unit case            
+                      
+
+        } ## end of loop around different T0s
+
+        ## saved objects
+        # sub.att.jack -- for treated units in the group
+        # sub.att.avg.jack -- average within group
+        # att.jack (adjusted) -- all treated units
+        # att.avg.jack -- average over all treated units
+
+        if (parallel == TRUE & max(T0.unique)>=8) {
+            stopCluster(para.clusters)
+        }
+
+
+        ##################################
+        ## SE, z-scores p values, and CI
+        ##################################
+
+        ## critical value for a two-sided test
+        c.value <- qnorm(0.5 - conf.lvl/2)
+
+        se.att <- apply(att.jack, 1, function(vec) sd(vec, na.rm=TRUE)) * (Ntr-1)/sqrt(Ntr)
+        se.att.avg <- sd(att.avg.jack, na.rm=TRUE) * (Ntr-1)/sqrt(Ntr) 
+        CI.sub.att.low <- CI.sub.att.high <- pvalue.sub.att <- z.sub.att <- se.sub.att <- matrix(NA, TT, nT0)
+        se.sub.att.avg <- rep(NA, nT0)
+        rownames(se.sub.att) <- Ttot
+        names(se.sub.att.avg) <- colnames(se.sub.att) <- T0.names
+        for (i in 1:nT0) {
+            Ntr.oneT0 <- ncol(sub.att.jack[[i]])
+            if (Ntr.oneT0>1) {
+                se.sub.att[,i] <- apply(sub.att.jack[[i]], 1, function(vec) sd(vec, na.rm=TRUE)) * (Ntr.oneT0-1)/sqrt(Ntr.oneT0)
+                se.sub.att.avg[i] <- sd(sub.att.avg.jack[[i]], na.rm=TRUE) * (Ntr.oneT0-1)/sqrt(Ntr.oneT0)
+                # z, pvalue, and CIs for sub.att
+                z.sub.att[,i] <- sub.att[,i]/se.sub.att[,1]
+                pvalue.sub.att[,i] <- (1 - pnorm(abs(z.sub.att[,i])))*2
+                CI.sub.att.low[,i] <- sub.att[,i] - c.value * se.sub.att[,1]
+                CI.sub.att.high[,i] <- sub.att[,i] + c.value * se.sub.att[,1]
+            }
+        }       
+
+        ## z-score
+        z.att <- att/se.att
+        z.att.avg <- att.avg/se.att.avg
+        z.sub.att.avg <- sub.att.avg/se.sub.att.avg
+
+        ## two-sided p-value
+        pvalue.att <- (1 - pnorm(abs(z.att)))*2
+        pvalue.att.avg <- (1 - pnorm(abs(z.att.avg)))*2
+        pvalue.sub.att.avg <- (1 - pnorm(abs(z.sub.att.avg)))*2
+
+        ## confidence intervals
+        CI.att <- cbind(att - c.value * se.att, att + c.value * se.att)
+        CI.att.avg <- c(att.avg - c.value * se.att.avg, att.avg + c.value * se.att.avg)
+        CI.sub.att.avg <- cbind(sub.att.avg - c.value * se.sub.att.avg, sub.att.avg + c.value * se.sub.att.avg)
+
+
+        ## put everything together
+        est.names <- c("ATT", "S.E.", "z-score", "CI.lower", "CI.upper","p.value", "n.Treated")
+        est.att <- cbind(att, se.att, z.att, CI.att, pvalue.att, ntreated = ntreated)
+        est.att[abs(est.att)<1e-5] <- 0
+        colnames(est.att) <- est.names
+        
+        ## average effect
+        est.att.avg <- t(as.matrix(c(att.avg, se.att.avg, z.att.avg, CI.att.avg, pvalue.att.avg)))
+        colnames(est.att.avg) <- est.names[1:6]
+
+        ## average effect for subgroups
+        est.sub.att.avg <- cbind(sub.att.avg, se.sub.att.avg, z.sub.att.avg, 
+            CI.sub.att.avg, pvalue.sub.att.avg, ntreated = T0.count)
+        est.sub.att.avg[abs(est.sub.att.avg)<1e-5] <- 0
+        colnames(est.sub.att.avg) <- est.names
+        
+        ## average effect over time for subgroups
+        est.sub.att <- array(NA, dim = c(TT,7,nT0),
+            dimnames = list(Ttot, est.names, paste("T0 =",Ttot[T0.unique]))) 
+        for (i in 1:nT0) {
+            est.sub.att[,,i] <- t(as.matrix(c(sub.att[,i], se.sub.att[,i], z.sub.att[,i], 
+                CI.sub.att.low[,i], CI.sub.att.high[,i], pvalue.sub.att[,i], rep(T0.count[i],TT))))
+        }
+        
+        ## storage
+        out.inference <- list(
+            est.att = est.att, 
+            est.att.avg = est.att.avg, 
+            est.sub.att = est.sub.att,
+            est.sub.att.avg = est.sub.att.avg
+            ) 
+    } 
+
+    # replace 0 with NA for att.adj
     sub.att.adj[sub.ntr==0] <- NA
+
+    
+    #####################
+    ## Save Results
+    #####################
+
 
     ## save results
     out <- list(
         id.tr = id.tr,
         id.co = id.co,
-        # Y.co = Y.co,
-        # Y.tr = Y.tr,
         Ttot = Ttot,
-        # Tpre = Tpre,
-        # Tpst = Tpst,
-        # N = N,
+        N = N,
         Ntr = Ntr,
         Nco = Nco,            
         T0 = T0.unique, 
         T0.all = T0.all,
         T0.tr = T0.tr,
         weights.co = weights.co,
-        names.co = colnames(weights.co),
         sub.Ytr.avg = sub.Ytr.avg,
         sub.Yct.avg = sub.Yct.avg,
         sub.att = sub.att,
@@ -908,13 +815,483 @@ tjbalance.mult <- function(
         sub.att.adj = sub.att.adj,
         ntreated = ntreated,
         att = att,
+        att.avg = att.avg,
         success = success,
-        sigma.best = sigmas.out,           
-        L1.ratio = L1
-        )     
+        bias.ratios = bias.ratios
+        )
+
+    if (vce == "jackknife") {
+        out <- c(out, out.inference)
+    }     
     
     return(out)
 }
+
+
+
+
+
+###################################################
+#### tjbal single: same treatment timing
+###################################################
+
+
+tjbal.single <- function(
+    data, ## data in wide form
+    Y,
+    D,
+    X,
+    Y.match.periods = NULL,
+    Y.match.npre = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    Ttot,
+    Tpre,
+    unit,
+    demean = FALSE, # take out pre-treatment unit mean
+    kernel = FALSE, # kernel method
+    maxnumdims = NULL,    
+    sigma = NULL, ## tuning parameters    
+    kbal.step = 1,
+    print.baltable = FALSE,
+    vce = "fixed.weights", ## uncertainty via bootstrap
+    conf.lvl = 0.95, ## confidence interval
+    nsims = 500, ## number of bootstrap runs
+    parallel = TRUE, ## parallel computing
+    cores = 4,
+    seed = 1234  
+    ) { 
+
+
+    TT <- length(Ttot)
+    id.tr <- which(data$treat == 1)
+    id.co <- which(data$treat == 0)
+    Ntr <- length(id.tr)
+    Nco <- length(id.co)
+    N <- Ntr + Nco 
+    T0 <- length(Tpre) 
+
+    if (vce == "jackknife") {
+        if (nsims > Ntr) {
+            njacks <- Ntr
+        } else {
+            njacks <- nsims
+        }
+    }
+
+    if (is.null(Y.match.periods)==FALSE) {
+        Tpre <- setdiff(Tpre, Y.match.periods)
+    } else {
+        if (is.null(Y.match.npre) == FALSE) {
+            Tpre <- Ttot[(T0 - Y.match.npre + 1):T0]
+        } 
+    }              
+    Tpst <- Ttot[(T0+1):TT]    
+
+    if (demean == TRUE) { 
+        Y.dm.var <- paste0(Y,".dm",Ttot)
+        Ypre.mean <- apply(data[, paste0(Y, Tpre), drop = FALSE], 1, mean) # N*1
+        outcome.dm <- data[, paste0(Y, Ttot), drop = FALSE] - matrix(Ypre.mean, N, TT) # N * TT
+        colnames(outcome.dm) <- Y.dm.var
+        data <- cbind.data.frame(data, outcome.dm) 
+
+        Y.match <- paste0(Y,".dm",Tpre)
+        Y.target <- paste0(Y,".dm",Ttot)
+        Y.target.pst <- paste0(Y,".dm",Tpst)
+    } else {
+        Y.match <- paste0(Y, Tpre)
+        Y.target <- paste0(Y, Ttot)
+        Y.target.pst <- paste0(Y, Tpst)
+    }
+    if (is.null(Y.match.periods)==FALSE) {
+        if (Y.match.periods == "none") { # do not match on pre-treatment Y
+            Y.match <- NULL
+        }
+    }    
+    matchvar <- c(Y.match, X)
+
+    ## default weights
+    w <- rep(NA, N)
+    weights.tr <- rep(1/Ntr, Ntr) 
+    weights.co <- rep(1/Nco, Nco)
+    names(weights.co) <- data[id.co, unit]
+    w[id.tr] <- weights.tr  
+    w[id.co] <- weights.co * (-1)  # controls add up to -1;
+
+    ## trajectory balancing
+    if (is.null(matchvar)==FALSE) { ## have something to balance on
+
+        cat("\nSeek balance on:\n")
+        cat(paste(matchvar, collapse = ", "),"\n\nOptimization:\n")              
+
+        ## balancing
+        tmp <- capture.output(
+            kbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
+                treatment = data$treat, b=sigma, maxnumdims = maxnumdims,
+                linkernel = (1-kernel), incrementby = kbal.step,
+                printprogress = FALSE, sampledinpop = FALSE))
+            , file = NULL)
+
+        if (kbal.out$earlyfail == FALSE) { 
+            bias.ratio <- 1
+        } else {
+            bias.ratio <- c(kbal.out$biasbound.opt/kbal.out$biasbound.orig)            
+        }
+
+        ## if success
+        if (kbal.out$earlyfail == FALSE) {
+            success <- 1
+            ndims <- kbal.out$numdims
+            K <- kbal.out$K # save kernel matrix
+            cat(paste0("bias.ratio = ", 
+                sprintf("%.4f",bias.ratio),"; num.dims = ",ndims,"\n"))
+            ## weights
+            weights.tr <- rep(1/Ntr, Ntr) # treated add up to 1; 
+            weights.co <- kbal.out$w[id.co]/Nco # controls add up to 1;
+            w[id.tr] <- weights.tr  
+            w[id.co] <- weights.co * (-1)  # controls add up to -1;
+        } else {
+            success <- 0
+            cat("\nSolution not found. Equal weights are being used.\n")            
+        }
+
+    }
+
+    # ATT
+    att <- apply(data[, Y.target] * w, 2, sum)
+    names(att) <- Ttot
+    att.avg <- mean(att[Y.target.pst])   
+
+    
+    ## treated and control data
+    Y.var  <- paste0(Y, Ttot)
+    Y.tr.bar <- apply(data[id.tr, Y.var], 2, mean, na.rm=TRUE)
+    Y.co.bar <- apply(data[id.co, Y.var], 2, mean, na.rm=TRUE)
+    Y.ct.bar <- Y.tr.bar - att
+    Y.bar <- cbind(Y.tr.bar,Y.ct.bar, Y.co.bar)  
+
+    ## data
+    Y.tr = data[id.tr, Y.var, drop = FALSE]
+    Y.co = data[id.co, Y.var, drop = FALSE]    
+
+    #####################
+    ## balance table
+    #####################
+    
+    if (is.null(matchvar)==FALSE && success == 1) {
+        
+        weighted.sd <- function(vec, w) {sqrt(sum(w * (vec - weighted.mean(vec,w))^2))}
+        if (Ntr>1) {
+            # treated
+            mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
+            sd.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, sd)
+            # control
+            mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean) 
+            sd.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, sd)
+            # weighted control 
+            mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
+            sd.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.sd, weights.co) 
+            # normalize by SD of the treated 
+            diff.pre <- (mean.tr - mean.co.pre)/sd.tr
+            diff.pst <- (mean.tr - mean.co.pst)/sd.tr                
+            bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, sd.tr, sd.co.pre,  sd.co.pst, diff.pre, diff.pst)
+        } else {
+            # treated
+            mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
+            # control
+            mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean)
+            # weighted control 
+            mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
+            # difference in means
+            diff.pre <- (mean.tr - mean.co.pre)/abs(mean.tr)
+            diff.pst <- (mean.tr - mean.co.pst)/abs(mean.tr)
+            bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, diff.pre, diff.pst)
+        }        
+        if (print.baltable == TRUE) {
+            cat("\nBalance Table\n")
+            print(round(bal.table, 4))   
+        }               
+    }
+
+
+    ###########################
+    ## Uncertainty Estimates
+    ###########################    
+
+    
+    #################
+    ## Fixed weights
+    #################
+
+    if (vce == "fixed.weights") {
+        ## Storing estimates
+        att.sims<-matrix(0,TT,nsims)
+        att.avg.sims<-matrix(0,nsims,1)          
+        for (j in 1:nsims) { 
+            sample.id <- c(sample(id.tr,Ntr, replace = TRUE),
+                sample(id.co, Nco, replace = TRUE))
+            w.boot <- w[sample.id]
+            w.boot[1:Ntr] <- w.boot[1:Ntr]/sum(w.boot[1:Ntr]) # add up to 1
+            w.boot[(Ntr+1):N] <- w.boot[(Ntr+1):N]/sum(w.boot[(Ntr+1):N]) * (-1) # add up to -1
+            att.sims[,j]<-apply(data[sample.id, Y.target] * w.boot, 2, sum)
+            att.avg.sims[j,]<-mean(att[Y.target.pst])
+        }
+        cat("\n")
+        ## standard errors
+        se.att <- apply(att.sims, 1, function(vec) sd(vec, na.rm=TRUE))
+        se.att.avg <- sd(att.avg.sims, na.rm=TRUE)
+    }
+
+    ###############
+    ## Bootstrap
+    ###############
+
+    if (vce == "bootstrap") {
+
+        
+        ## Simulation
+        cat("Bootstrapping... ") 
+
+        one.boot <- function() {
+            ## weights: treated add up to 1; controls add up to -1; sum is zero
+            sample.id <- c(sample(id.co, Nco, replace = TRUE),sample(id.tr,Ntr, replace = TRUE))
+            w.boot <- rep(1/Ntr, N)
+            if (is.null(matchvar) == TRUE) { # no reweighting                         
+                w.boot[1:Nco] <- rep(-1/Nco, Nco)
+            } else {
+                data.tmp <- data[sample.id, ]
+                K.boot <- K[sample.id, ]
+                tmp <- capture.output(                                
+                    kbal.boot <- suppressWarnings(kbal(allx = data.tmp[, matchvar], treatment = data.tmp[, D],
+                        linkernel = (1-kernel), incrementby = kbal.step, 
+                        printprogress = FALSE, sampledinpop = FALSE,
+                        K = K.boot, minnumdims = max(0,ndims-5), maxnumdims = ndims))
+                , file = NULL)                
+                w.boot[1:Nco] <- kbal.boot$w[1:Nco]/Nco*(-1)  # controls add up to -1;   
+            }
+            att <- apply(data[sample.id, Y.target] * w.boot, 2, sum)
+            att.avg <- mean(att[Y.target.pst])
+            out <- list(att = att, att.avg = att.avg)
+            return(out)            
+        }
+
+        ## Storing bootstrapped estimates
+        att.sims<-matrix(0,TT,nsims)
+        att.avg.sims<-matrix(0,nsims,1)  
+
+        ## computing
+        if (parallel == TRUE) {
+            ## prepare
+            if (is.null(cores) == TRUE) {
+                cores <- detectCores()
+            }
+            para.clusters <- makeCluster(cores)
+            registerDoParallel(para.clusters)
+            ## start    
+            cat("Parallel computing...") 
+            boot.out <- foreach(j=1:nsims, 
+                .inorder = FALSE,                
+                .packages = c("KBAL")
+                ) %dopar% {
+                return(one.boot())
+            }
+            stopCluster(para.clusters)
+            ## save results
+            for (j in 1:nsims) { 
+                att.sims[,j]<-boot.out[[j]]$att
+                att.avg.sims[j,]<-boot.out[[j]]$att.avg                  
+            } 
+        } else { ## single core
+            for (j in 1:nsims) { 
+                boot <- one.boot() 
+                att.sims[,j]<-boot$att
+                att.avg.sims[j,]<-boot$att.avg                
+                ## report progress
+                if (kernel == FALSE) {
+                    if (j%%50==0)  {cat(".")}
+                } else {
+                    cat(j,"\n")
+                } 
+            }  
+        }
+        # end of bootstrapping
+        cat("\n")      
+      
+
+        ## standard errors
+        se.att <- apply(att.sims, 1, function(vec) sd(vec, na.rm=TRUE))
+        se.att.avg <- sd(att.avg.sims, na.rm=TRUE)       
+        
+
+    }
+
+    #######################
+    ## Jackknife
+    #######################
+
+    if (vce == "jackknife") {
+
+        cat("Jackknife... ")
+        drop.id <- sample(id.tr, njacks, replace = FALSE)                 
+        
+        one.jack <- function(id) {
+            ## weights: treated add up to 1; controls add up to -1; sum is zero
+            if (vce == "jackknife") {
+                sample.id <- c(id.co, setdiff(id.tr,id)) # drop one treated unit each time 
+                w.jack <-  rep(1/(Ntr-1), (N-1))                  
+            }
+            if (is.null(matchvar) == TRUE) { # no reweighting                         
+                w.jack[1:Nco] <- rep(-1/Nco, Nco)
+            } else {
+                data.tmp <- data[sample.id, ]
+                K.jack <- K[sample.id, ]
+                tmp <- capture.output(
+                    kbal.jack <- suppressWarnings(kbal(allx = data.tmp[, matchvar], treatment = data.tmp[, D],
+                    linkernel = (1-kernel), incrementby = kbal.step, printprogress = FALSE,                    
+                        K = K.jack, minnumdims = max(0,ndims-5), maxnumdims = ndims))            
+                , file = NULL)    
+                w.jack[1:Nco] <- kbal.jack$w[1:Nco]/Nco*(-1)  # controls add up to -1;   
+            }                      
+            ## ATT
+            att <- apply(data[sample.id, Y.target] * w.jack, 2, sum)
+            att.avg <- mean(att[Y.target.pst])
+            out <- list(att = att, att.avg = att.avg)
+            return(out)            
+        }
+
+        ## Storing jackknife estimates
+        att.sims<-matrix(0,TT,njacks)
+        att.avg.sims<-matrix(0,njacks,1)  
+
+        ## computing
+        if (parallel == TRUE) {
+            ## prepare
+            if (is.null(cores) == TRUE) {
+                cores <- detectCores()
+            }
+            para.clusters <- makeCluster(cores)
+            registerDoParallel(para.clusters)
+            ## start    
+            cat("Parallel computing...") 
+            jack.out <- foreach(j=1:njacks, 
+                .inorder = FALSE,
+                .packages = c("KBAL")
+                ) %dopar% {
+                return(one.jack(drop.id[j]))
+            }
+            stopCluster(para.clusters)
+            ## save results
+            for (j in 1:njacks) { 
+                att.sims[,j]<-jack.out[[j]]$att
+                att.avg.sims[j,]<-jack.out[[j]]$att.avg                  
+            } 
+        } else { ## single core
+            for (j in 1:njacks) { 
+                jack <- one.jack(drop.id[j]) 
+                att.sims[,j]<-jack$att
+                att.avg.sims[j,]<-jack$att.avg                
+                ## report progress
+                if (kernel == FALSE) {
+                    if (j%%50==0)  {cat(".")}
+                } else {
+                    cat(j,"\n")
+                } 
+            }  
+        }
+        ## end of bootstrapping
+        cat("\n")
+        
+        #### SE and CIs ####
+        se.att <- apply(att.sims, 1, function(vec) sd(vec, na.rm=TRUE)) * (Ntr-1)/sqrt(Ntr)
+        se.att.avg <- sd(att.avg.sims, na.rm=TRUE) * (Ntr-1)/sqrt(Ntr)        
+
+    } # end of jackknife
+
+    #############################
+    ## z-scores p values, and CI
+    #############################
+
+    if (vce %in% c("fixed.weights","bootstrap","jackknife")) {
+    
+        ## z-score
+        z.att <- att/se.att
+        z.att.avg <- att.avg/se.att.avg
+
+        ## two-sided p-value
+        pvalue.att <- (1 - pnorm(abs(z.att)))*2
+        pvalue.att.avg <- (1 - pnorm(abs(z.att.avg)))*2
+
+        ## critical value for a two-sided test
+        c.value <- qnorm(0.5 - conf.lvl/2)
+
+        ## confidence intervals
+        CI.att <- cbind(att - c.value * se.att, att + c.value * se.att)
+        CI.att.avg <- c(att.avg - c.value * se.att.avg, att.avg + c.value * se.att.avg)
+
+
+        ## put everything together
+        est.att <- cbind(att, se.att, z.att, CI.att, pvalue.att, ntreated = rep(Ntr,TT))
+        est.att[abs(est.att)<1e-5] <- 0
+        colnames(est.att) <- c("ATT", "S.E.", "z-score", "CI.lower", "CI.upper","p.value", "n.Treated")
+        rownames(est.att) <- Ttot    
+
+        ## average effect
+        est.att.avg <- t(as.matrix(c(att.avg, se.att.avg, z.att.avg, CI.att.avg, pvalue.att.avg)))
+        colnames(est.att.avg) <- c("ATT.avg", "S.E.", "z-score", "CI.lower", "CI.upper", "p.value")
+
+        ## storage
+        out.inference <- list(
+            est.att = est.att, 
+            est.att.avg = est.att.avg, 
+            att.sims = att.sims, 
+            att.avg.sims = att.avg.sims
+            ) 
+    }  
+
+    
+    #####################
+    ## Save Results
+    #####################
+
+    out <- list(data.wide = data,
+            id.tr = id.tr,
+            id.co = id.co,
+            Y.tr = Y.tr,
+            Y.co = Y.co,
+            weights.co = weights.co, # Nco * 1 vector
+            Ttot = Ttot,
+            Tpre = Tpre,
+            Tpst = Tpst,
+            T0 = T0,
+            N = N,
+            Ntr = Ntr,
+            Nco = Nco,                
+            matchvar = matchvar,
+            Y.bar = Y.bar, 
+            att = att,
+            att.avg = att.avg,
+            ntreated = rep(Ntr,TT))
+    
+    if (is.null(matchvar)==FALSE) {
+        out <- c(out,
+            list(success = success,
+            bias.ratio = bias.ratio,
+            ndims = ndims,
+            sigma = sigma))
+        if (success==1) {
+            out <- c(out, list(bal.table = bal.table))
+        }      
+    } 
+    
+    if (vce %in% c("fixed.weights","bootstrap","jackknife")) {
+        out <- c(out, out.inference)
+    }       
+    return(out)
+
+}
+
+
+
+    
+
 
 #######################################################
 ## METHODS
@@ -931,7 +1308,7 @@ print.tjbal <- function(x,
     cat("Call:\n")
     print(x$call, digits = 4)
     
-    if (is.null(x$est.avg) == TRUE) { # no uncertainties
+    if (is.null(x$est.att.avg) == TRUE) { # no uncertainties
         cat("\nAverage Treatment Effect on the Treated:\n")
         print(x$att.avg, digits = 4)
         cat("\n   ~ by Period (including Pre-treatment Periods):\n")
@@ -939,7 +1316,7 @@ print.tjbal <- function(x,
         cat("\nUncertainty estimates not available.\n")
     } else {
         cat("\nAverage Treatment Effect on the Treated:\n")
-        print(x$est.avg, digits = 4)
+        print(x$est.att.avg, digits = 4)
         cat("\n   ~ by Period (including Pre-treatment Periods):\n")
         print(x$est.att, digits = 4)        
     }
@@ -956,6 +1333,7 @@ plot.tjbal <- function(x,
     ylim = NULL,
     xlab = NULL, 
     ylab = NULL,
+    count = TRUE,
     legendOff = FALSE,
     main = NULL,
     raw = "none",
@@ -964,6 +1342,11 @@ plot.tjbal <- function(x,
     trim = TRUE, ## trim control group in ct plot
     trim.wtot = 0.9, ## show controls whose weights sum up to a number
     theme.bw = TRUE, ## black/white or gray theme
+    cex.main = NULL,
+    cex.axis = NULL,
+    cex.lab = NULL, 
+    cex.legend = NULL,
+    cex.text = NULL,
     axis.adjust = FALSE,
     ...){
 
@@ -1067,6 +1450,53 @@ plot.tjbal <- function(x,
     } else {
       line.color <- "white"
     }
+
+    #### font size
+    ## title
+    if (is.null(cex.main)==FALSE) {
+        if (is.numeric(cex.main)==FALSE) {
+            stop("\"cex.main\" is not numeric.")
+        }
+        cex.main <- 18 * cex.main
+    } else {
+        cex.main <- 18
+    }
+    ## axis label
+    if (is.null(cex.lab)==FALSE) {
+        if (is.numeric(cex.lab)==FALSE) {
+            stop("\"cex.lab\" is not numeric.")
+        }
+        cex.lab <- 15 * cex.lab
+    } else {
+        cex.lab <- 15
+    }
+    ## axis number
+    if (is.null(cex.axis)==FALSE) {
+        if (is.numeric(cex.axis)==FALSE) {
+            stop("\"cex.axis\" is not numeric.")
+        }
+        cex.axis <- 15 * cex.axis
+    }  else {
+        cex.axis <- 15
+    }
+    ## legend
+    if (is.null(cex.legend)==FALSE) {
+        if (is.numeric(cex.legend)==FALSE) {
+            stop("\"cex.legend\" is not numeric.")
+        }
+        cex.legend <- 15 * cex.legend
+    }  else {
+        cex.legend <- 15
+    }
+    ## text
+    if (is.null(cex.text)==FALSE) {
+        if (is.numeric(cex.text)==FALSE) {
+            stop("\"cex.text\" is not numeric.")
+        }
+        cex.text <- 6 * cex.text
+    }  else {
+        cex.text <- 6
+    }
     
     ##-------------------------------##
     ## Plotting
@@ -1111,7 +1541,9 @@ plot.tjbal <- function(x,
     }
 
     if (type == "gap" && x$sameT0 == FALSE)  { ## variable treatment timing
-        time <- c(1:TT) - min(T0)
+         ## recenter based on treatment timing
+        time <- c(-(max(T0) -1) : (TT-min(T0)))
+        TT <- length(time)
         time.bf <- 0 ## before treatment
         if (length(xlim) != 0) {
             show <- which(time>=xlim[1]& time<=xlim[2])     
@@ -1135,9 +1567,19 @@ plot.tjbal <- function(x,
         legend.pos <- "bottom"
     }
 
+    ## confidence intervals
+    CI <- NULL
+    if (is.null(x$est.att)==TRUE) {
+        CI <- FALSE
+    } else {
+        CI <- TRUE
+    }
+
     ############  START  ###############
     
     if (type == "gap") { 
+
+        max.count.pos <- time[min(intersect(show,which(time > time.bf)))]
         
         if (x$Ntr>1) {
             maintext <- "Average Treatment Effect on the Treated"
@@ -1160,13 +1602,34 @@ plot.tjbal <- function(x,
             ylab <- NULL
         }
 
+        
+
         ## construct data for plotting
-        if (is.null(x$est.att)==TRUE) { 
+        if (CI==FALSE) { 
             cat("Uncertainty estimates not available.\n")
             data <- cbind.data.frame(time, ATT = x$att)[show,]             
         } else {
             data <- cbind.data.frame(time, tb)[show,]
         }
+
+        # height of the histogram
+        if (CI == FALSE) {
+            if (length(ylim) != 0) {
+                rect.length <- (ylim[2] - ylim[1]) / 5
+                rect.min <- ylim[1]
+            } else {
+                rect.length <- (max(data[,"ATT"]) - min(data[,"ATT"]))/2
+                rect.min <- min(data[,"ATT"]) - rect.length
+            } 
+        } else {
+            if (length(ylim) != 0) {
+                rect.length <- (ylim[2] - ylim[1]) / 5
+                rect.min <- ylim[1]
+            } else {
+                rect.length <- (max(data[,"CI.upper"]) - min(data[,"CI.lower"]))/2
+                rect.min <- min(data[,"CI.lower"]) - rect.length
+            }  
+        } 
                          
         ## plotting
         p <- ggplot(data)
@@ -1176,24 +1639,44 @@ plot.tjbal <- function(x,
         p <- p +
         geom_vline(xintercept = time.bf, colour=line.color,size = 2) +
         geom_hline(yintercept = 0, colour=line.color,size = 2) +
-                ## annotate("rect", xmin= time.bf, xmax= Inf,
-                ##          ymin=-Inf, ymax=Inf, alpha = .1,
-                ##          fill = "yellow") +
-        xlab(xlab) +  ylab(ylab) +
-        theme(legend.position = legend.pos,
-          plot.title = element_text(size=20,
-            hjust = 0.5,
-            face="bold",
-            margin = margin(10, 0, 10, 0)))
+        xlab(xlab) +  ylab(ylab) 
+
+        ## histogram
+        if (count == TRUE) {
+            data[,"xmin"] <- data[,"time"] - 0.2
+            data[,"xmax"] <- data[,"time"] + 0.2
+            data[,"ymin"] <- rep(rect.min, nrow(data))
+            data[,"ymax"] <- rect.min + (x$ntreated/Ntr) * 0.8 * rect.length
+            xx <- range(data$time)
+            p <- p + geom_rect(data = data, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), 
+                fill = "grey70", colour = "grey69", alpha = 0.4, size = 0.2)
+            p <- p + annotate("text", x = max.count.pos + 0.00 * (xx[2]-xx[1]), 
+                y = max(data$ymax) + 0.2 * rect.length, 
+                label = paste("Ntr =",Ntr), size = cex.text * 0.8, hjust = 0.5)
+        }
 
 
         ## point estimates
         p <- p + geom_line(aes(time, ATT), size = 1.2)
 
         ## confidence intervals
-        if (is.null(x$est.att)==FALSE) {
+        if (CI == TRUE) {
             p <- p + geom_ribbon(aes(x = time, ymin=CI.lower, ymax=CI.upper),alpha=0.2)
         }
+
+        ## legend and axes
+        p <- p + theme(legend.text = element_text(margin = margin(r = 10, unit = "pt"), size = cex.legend),
+         legend.position = legend.pos,
+         legend.background = element_rect(fill="transparent",colour=NA),
+         axis.title=element_text(size=cex.lab),
+         axis.title.x = element_text(margin = margin(t = 8, r = 0, b = 0, l = 0)),
+         axis.title.y = element_text(margin = margin(t = 0, r = 0, b = 0, l = 0)),
+         axis.text = element_text(color="black", size=cex.axis),
+         axis.text.x = element_text(size = cex.axis, angle = angle, hjust=x.h, vjust=x.v),
+         axis.text.y = element_text(size = cex.axis),
+         plot.title = element_text(size = cex.main, hjust = 0.5, face="bold", margin = margin(10, 0, 10, 0)))
+
+        
 
         
     } else if (type=="counterfactual") { 
@@ -1783,5 +2266,9 @@ plot.tjbal <- function(x,
     if (is.null(ylim) == FALSE) {
         p <- p + coord_cartesian(ylim = ylim)
     }
+
+
+
+
     suppressWarnings(print(p))
 }
