@@ -14,7 +14,6 @@ tjbal <- function(
     index, # unit and time
     Y.match.periods = NULL,
     Y.match.npre = TRUE, # fix the number of pre-periods for balancing when T0s are different
-    npre = NULL,
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
@@ -42,7 +41,6 @@ tjbal.formula <- function(
     index, # unit and time
     Y.match.periods = NULL,
     Y.match.npre = TRUE, # fix the number of pre-periods for balancing when T0s are different
-    npre = NULL,
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
@@ -79,7 +77,7 @@ tjbal.formula <- function(
     out <- tjbal.default(data = data, Y = Yname,
                           D = Dname, X = Xname,
                           X.avg.time = X.avg.time, index = index, 
-                          Y.match.periods= Y.match.periods, Y.match.npre = Y.match.npre, npre = npre, 
+                          Y.match.periods= Y.match.periods, Y.match.npre = Y.match.npre,  
                           demean = demean, kernel = kernel, sigma = sigma,
                           maxnumdims = maxnumdims, kbal.step = kbal.step, print.baltable = print.baltable, 
                           vce = vce, conf.lvl = conf.lvl, nsims = nsims, nboots = nboots, parallel = parallel, cores = cores, 
@@ -105,8 +103,6 @@ tjbal.default <- function(
     kernel = FALSE, # kernel method
     sigma=NULL,
     maxnumdims = NULL,
-    test = FALSE, ## test different sigmas
-    nsigma = 16,
     kbal.step = 1,
     print.baltable = TRUE, # print out table table
     vce = "jackknife", ## uncertainty via bootstrap
