@@ -12,8 +12,8 @@ tjbal <- function(
     X = NULL, # time-invariant covariates
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
-    Y.match.periods = NULL,
-    Y.match.npre = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    Y.match.time = NULL,
+    Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
@@ -22,6 +22,7 @@ tjbal <- function(
     vce = "jackknife", ## uncertainty estimates
     conf.lvl = 0.95, ## confidence interval
     nsims = NULL, ## number of bootstrap runs
+    bootstrap = NULL, ## from an older version
     nboots = NULL,
     parallel = TRUE, ## parallel computing
     cores = 4,
@@ -39,8 +40,8 @@ tjbal.formula <- function(
     data, # data in long form
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
-    Y.match.periods = NULL,
-    Y.match.npre = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    Y.match.time = NULL,
+    Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
@@ -50,6 +51,7 @@ tjbal.formula <- function(
     vce = "jackknife", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
     nsims = NULL, ## number of bootstrap runs
+    bootstrap = NULL, ## from an older version
     nboots = NULL, ## same as above
     parallel = TRUE, ## parallel computing
     cores = 4,
@@ -77,10 +79,11 @@ tjbal.formula <- function(
     out <- tjbal.default(data = data, Y = Yname,
                           D = Dname, X = Xname,
                           X.avg.time = X.avg.time, index = index, 
-                          Y.match.periods= Y.match.periods, Y.match.npre = Y.match.npre,  
+                          Y.match.time= Y.match.time, Y.match.npre = Y.match.npre,  
                           demean = demean, kernel = kernel, sigma = sigma,
                           maxnumdims = maxnumdims, kbal.step = kbal.step, print.baltable = print.baltable, 
-                          vce = vce, conf.lvl = conf.lvl, nsims = nsims, nboots = nboots, parallel = parallel, cores = cores, 
+                          vce = vce, conf.lvl = conf.lvl, nsims = nsims, 
+                          bootstrap = bootstrap, nboots = nboots, parallel = parallel, cores = cores, 
                           seed = seed)
     
     out$call <- match.call()
@@ -97,7 +100,7 @@ tjbal.default <- function(
     X = NULL, # time-invariant covariates
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
-    Y.match.periods = NULL,
+    Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
@@ -108,6 +111,7 @@ tjbal.default <- function(
     vce = "jackknife", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
     nsims = NULL, ## number of bootstrap runs
+    bootstrap = NULL, ## from an older version
     nboots = NULL, ## same as above
     parallel = TRUE, ## parallel computing
     cores = 4,
@@ -137,6 +141,12 @@ tjbal.default <- function(
     if (vce == "jack") {vce <- "jackknife"}
     if (vce == "fixed") {vce <- "fixed.weights"}
 
+    if (is.null(bootstrap)==FALSE) {
+        if (bootstrap==TRUE) {
+            vce = "bootstrap"
+        }
+    }
+
     if (is.null(nsims)==TRUE & is.null(nboots)==FALSE) {
         nsims <- nboots
     } else {
@@ -152,7 +162,7 @@ tjbal.default <- function(
     Yname <- Y
     Dname <- D
     Xname <- X
-    
+
     id <- index[1];
     time <- index[2];
     TT <- length(unique(data[,time]))
@@ -190,6 +200,11 @@ tjbal.default <- function(
     ## time and unit
     Ttot <- sort(unique(data[,time]))
     units <- unique(data[,id])
+
+    ## check balanced panel
+    if (nrow(data) != TT*N) {
+        stop("Data are not balanced or \"index\" does not uniquely identity an observation.")
+    }
     
     ##treatment indicator
     D<- matrix(data[,Dname],TT,N)
@@ -313,8 +328,6 @@ tjbal.default <- function(
         data.wide <- cbind.data.frame(id = 1:N, unit = units, treat = treat, T0 = T0, outcome)
     } 
 
- 
-    
 
     #######################
     ## balancing
@@ -322,15 +335,15 @@ tjbal.default <- function(
 
     if (sameT0 == TRUE) {
         bal.out <- tjbal.single(data = data.wide, Y = Yname, D = "treat", X = Xname,
-            Y.match.periods = Y.match.periods, Y.match.npre = Y.match.npre, 
-            Ttot = Ttot, Tpre = Tpre, unit = "id", 
+            Y.match.time = Y.match.time, Y.match.npre = Y.match.npre, 
+            Ttot = Ttot, unit = "id", 
             demean = demean, kernel = kernel, maxnumdims = maxnumdims,
             sigma = sigma, kbal.step = kbal.step, print.baltable = print.baltable,
             vce = vce, conf.lvl = conf.lvl,
             nsims = nsims, parallel = parallel, cores = cores, seed = seed)         
     } else {        
         bal.out <- tjbal.multi(data = data.wide, Y = Yname, D = "treat", X = Xname,
-            Y.match.periods = Y.match.periods, Y.match.npre = Y.match.npre, 
+            Y.match.time = Y.match.time, Y.match.npre = Y.match.npre, 
             Ttot = Ttot, unit = "id", 
             demean = demean, kernel = kernel, maxnumdims = maxnumdims,
             sigma = sigma, kbal.step = kbal.step, 
@@ -340,7 +353,7 @@ tjbal.default <- function(
     
  
 
-    out <- c(list(sameT0 = sameT0, index = index), bal.out)
+    out <- c(list(sameT0 = sameT0, index = index, Yname = Yname), bal.out)
     out$call <- match.call()
     class(out) <- "tjbal"
     return(out)
@@ -357,8 +370,8 @@ tjbal.multi <- function(
     Y,
     D,
     X,
-    Y.match.periods = NULL,
-    Y.match.npre = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    Y.match.time = NULL,
+    Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     Ttot,
     unit,
     demean = FALSE, # take out pre-treatment unit mean
@@ -380,12 +393,13 @@ tjbal.multi <- function(
     id.co <- which(data$tr == 0)
     Ntr <- length(id.tr)
     Nco <- length(id.co)
+    N <- Ntr + Nco
     Y.var  <- paste0(Y, Ttot)
     units <- as.character(unique(data$unit))
 
     ## parse multiple treatment timing
     T0.all <- data$T0
-    names(T0.all) <- data$id
+    names(T0.all) <- units
     T0.tr <- T0.all[id.tr] # T0 for all treated units
     tb.T0 <- table(T0.tr)
     T0.unique <- as.numeric(names(tb.T0))
@@ -400,27 +414,27 @@ tjbal.multi <- function(
     TT.adj <- length(time.adj)
     
     ## storage
-
-    weights.co <- matrix(NA, length(id.co), nT0) # id.co * T0.unique
-    rownames(weights.co) <- data$id[id.co]
-    colnames(weights.co) <- T0.names
+    sub.weights.co <- matrix(NA, length(id.co), nT0) # id.co * T0.unique
+    rownames(sub.weights.co) <- units[id.co]
+    colnames(sub.weights.co) <- T0.names
     sub.att <- sub.Ytr.avg <- sub.Yct.avg <- matrix(NA, TT, nT0)
     sub.att.avg <- rep(NA, nT0)
     rownames(sub.att) <- rownames(sub.Ytr.avg) <- rownames(sub.Yct.avg) <- Ttot
     names(sub.att.avg) <- colnames(sub.att) <- colnames(sub.Ytr.avg) <- colnames(sub.Yct.avg) <- T0.names
     ## number of treated units for each subgroup
-    sub.ntr.pst <- sub.ntr <- sub.att.adj <- matrix(0, TT.adj, nT0) 
+    sub.Ytr.adj <- sub.ntr.pst <- sub.ntr <- sub.att.adj <- matrix(0, TT.adj, nT0) 
     # naming
-    rownames(sub.ntr.pst) <- rownames(sub.ntr) <- rownames(sub.att.adj) <- time.adj
-    colnames(sub.ntr.pst) <- colnames(sub.ntr) <- colnames(sub.att.adj) <- T0.names
-    bias.ratios <- success <- rep(0, length(T0.unique))    
+    rownames(sub.Ytr.adj) <-rownames(sub.ntr.pst) <- rownames(sub.ntr) <- rownames(sub.att.adj) <- time.adj
+    colnames(sub.Ytr.adj) <-colnames(sub.ntr.pst) <- colnames(sub.ntr) <- colnames(sub.att.adj) <- T0.names
+    bias.ratios <- success <- rep(NA, length(T0.unique))    
 
 
-    ## save subsets of the original data and K matrix
-    K.list <- data.list <- vector("list", length = nT0)  
+    ## save subsets of the original data, K matrix, and variables to be balanced on
+    bal.table.list <- matchvar.list <- K.list <- data.list <- vector("list", length = nT0)  
     ## save number of dimensions
-    ndims <- rep(NA, nT0)      
-    
+    ndims <- rep(NA, nT0) 
+
+
     cat("\nBalancing...\n")        
     for (i in 1:nT0) {
 
@@ -430,16 +444,17 @@ tjbal.multi <- function(
         Ntr.one <- length(id.tr.one)
         N.one <- Ntr.one + Nco
 
-
-        if (is.null(Y.match.periods)==FALSE) {
-            Tpre <- setdiff(Tpre, Y.match.periods)
+        if (is.null(Y.match.npre)==FALSE) {
+            Y.match.time <- Ttot[max(1,(T0-Y.match.npre+1)):T0]
         } else {
-            if (is.null(Y.match.npre) == FALSE) {
-                Tpre <- Ttot[max(0,(T0 - Y.match.npre + 1)):T0]
-            }
-        }              
+            if (is.null(Y.match.time)==FALSE) {
+                Y.match.time <- intersect(Tpre, Y.match.time)
+            } else {
+               Y.match.time <- Tpre 
+           }
+        }   
         Tpst <- Ttot[(T0+1):TT]
-        #T.mid <- floor(median(Tpre))
+
 
         ## remove other treated 
         data.oneT0 <- data[c(id.co,id.tr.one),]
@@ -450,63 +465,56 @@ tjbal.multi <- function(
             outcome.dm <- data.oneT0[, paste0(Y, Ttot), drop = FALSE] - matrix(Ypre.mean, N.one, TT) # N * TT
             colnames(outcome.dm) <- Y.dm.var
             data.oneT0 <- cbind.data.frame(data.oneT0, outcome.dm) 
-            Y.match <- paste0(Y,".dm",Tpre)
+            Y.match <- paste0(Y,".dm",Y.match.time)
             Y.target <- paste0(Y,".dm",Ttot)
             Y.target.pst <- paste0(Y,".dm",Tpst)
         } else {            
-            Y.match <- paste0(Y, Tpre)
+            Y.match <- paste0(Y, Y.match.time)
             Y.target <- paste0(Y, Ttot)
             Y.target.pst <- paste0(Y, Tpst)
         }
-        if (is.null(Y.match.periods)==FALSE) {
-            if (Y.match.periods == "none") { # do not match on pre-treatment Y
-                Y.match <- NULL
-            }
+        if (Y.match.time[1] == "none" || Y.match.npre == 0) { # do not match on pre-treatment Y
+            Y.match <- NULL
         } 
         matchvar <- c(Y.match, X)
+        if (is.null(matchvar)==FALSE) {matchvar.list[[i]] <- matchvar}
         # Save this subsample in data.list           
         data.list[[i]] <- data.oneT0
 
         ## default weights
         w <- rep(1/Ntr.one, N.one)
-        w[1:Nco] <- rep(-1/Nco, Nco) 
+        w.co <- rep(1/Nco, Nco) 
+        w[1:Nco] <- w.co * (-1)
 
         ## trajectory balancing
         cat(paste0("Subgroup T0 = ",T0,": "))
         if (is.null(matchvar)==FALSE) { ## have something to balance on
             tmp <- capture.output(
-                kbal.out <- kbal(allx = data.oneT0[,matchvar],
+                kbal.out <- suppressWarnings(kbal(allx = data.oneT0[,matchvar],
                     treatment = data.oneT0$treat, b=sigma, maxnumdims = maxnumdims,
                     linkernel = (1-kernel), incrementby = kbal.step,
-                    printprogress = FALSE, sampledinpop = FALSE)         
+                    printprogress = FALSE, sampledinpop = FALSE))         
                 , file = NULL)
 
-            if (kbal.out$earlyfail==TRUE) { 
-                bias.ratio <- 1
-            } else {
-                bias.ratio <- c(kbal.out$biasbound.opt/kbal.out$biasbound.orig)            
-            }
-
-
             ## if success
+            success[i] <- FALSE
+            bias.ratios[i] <- 1
             if (kbal.out$earlyfail==FALSE) {
-                success <- 1
+                success[i] <- TRUE
+                bias.ratios[i] <- c(kbal.out$biasbound.opt/kbal.out$biasbound.orig)
                 ndims[i] <- kbal.out$numdims
                 K.list[[i]] <- kbal.out$K # save kernel matrix
-                cat(paste0("bias.ratio = ", 
-                    sprintf("%.4f",bias.ratio),"; num.dims = ",ndims[i],"\n"))
+                cat(paste0("bias.ratio = ",sprintf("%.4f",bias.ratios[i]),"; num.dims = ",ndims[i],"\n"))
                 ## weights
                 w.co <- kbal.out$w[1:Nco]/Nco                
                 w[1:Nco] <- w.co * (-1)                      
-            } else {
-                success <- 0                         
-            }  
-        }
-        
+            } 
+        } else { # nothing to match
+            bias.ratios[i] <- 1
+        }        
         att <- apply(data.oneT0[, Y.target] * w, 2, sum)
-        success[i] <- success
-        weights.co[,i] <- w.co
-        bias.ratios[i] <- bias.ratio
+        sub.weights.co[,i] <- w.co
+        
         
         sub.att[,i] <- att
         sub.att.avg[i] <- mean(att[Y.target.pst])
@@ -519,11 +527,50 @@ tjbal.multi <- function(
         fill.end <- fill.start + length(att) -1 
         sub.ntr[fill.start:fill.end, i] <- T0.count[i]   
         sub.att.adj[fill.start:fill.end, i] <- att
+        sub.Ytr.adj[fill.start:fill.end, i] <- sub.Ytr.avg[,i]
+
+        ## balance table
+        if (is.null(matchvar)==FALSE) {
+
+            weighted.sd <- function(vec, w) {sqrt(sum(w * (vec - weighted.mean(vec,w))^2))}
+            if (Ntr.one>1) {
+                # treated
+                mean.tr <- apply(data.oneT0[(Nco+1):N.one, matchvar, drop = FALSE], 2, mean) 
+                sd.tr <- apply(data.oneT0[(Nco+1):N.one, matchvar, drop = FALSE], 2, sd)
+                # control
+                mean.co.pre <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, mean) 
+                sd.co.pre <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, sd)
+                # weighted control 
+                mean.co.pst <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, weighted.mean, w.co) 
+                sd.co.pst <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, weighted.sd, w.co) 
+                # normalize by SD of the treated 
+                diff.pre <- (mean.tr - mean.co.pre)/sd.tr
+                diff.pst <- (mean.tr - mean.co.pst)/sd.tr                
+                bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, sd.tr, sd.co.pre,  sd.co.pst, diff.pre, diff.pst)
+            } else {
+                # treated
+                mean.tr <- apply(data.oneT0[(Nco+1):N.one, matchvar, drop = FALSE], 2, mean) 
+                # control
+                mean.co.pre <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, mean)
+                # weighted control 
+                mean.co.pst <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, weighted.mean, w.co) 
+                # difference in means
+                diff.pre <- (mean.tr - mean.co.pre)/abs(mean.tr)
+                diff.pst <- (mean.tr - mean.co.pst)/abs(mean.tr)
+                bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, diff.pre, diff.pst)
+            }
+            bal.table.list[[i]] <- bal.table
+        }
        
     }
     ntreated <- rowSums(sub.ntr) # how the number of units changes over adjusted time
     att <- rowSums(sub.att.adj * sub.ntr)/ntreated
     names(ntreated) <- names(att) <- time.adj
+
+    # average Y and average counterfactual (realigned)
+    Y.bar.tr <- rowSums(sub.Ytr.adj * sub.ntr)/ntreated
+    Y.bar.ct <- Y.bar.tr - att
+    Y.bar <- cbind(Y.bar.tr, Y.bar.ct)
 
     # this matrix count the number of treated units for each T0 (post-treatment)
     sub.ntr.pst <- sub.ntr
@@ -531,6 +578,16 @@ tjbal.multi <- function(
     
     ## average effect (weighted by obs)
     att.avg <- sum(sub.att.adj * sub.ntr.pst)/sum(sub.ntr.pst)
+
+    ## weights.co
+    weights.co <- apply(sub.weights.co,1,weighted.mean,T0.count)
+    names(weights.co) <- units[id.co]
+
+    ## group statistics
+    group.stats <- cbind(T0 = T0.unique, time = Ttot[T0.unique], Ntr = T0.count, success, bias.ratios)
+
+    
+
 
     #######################################
     ## Uncertainty Estimates via Jackknife
@@ -604,13 +661,13 @@ tjbal.multi <- function(
                 k <- k + 1
             } else { # more than one unit in this group 
 
-                one.jack <- function(data, K, id, ndims) {
+                one.jack <- function(data, K, id, ndims, matchvar) {
                         N <- nrow(data)
                         Ntr <- N - Nco
                         id <- which(data$id == id) # translate original id to new id
                         N <- Ntr + Nco
                         # weights: treated add up to 1; controls add up to -1; sum is zero
-                        w.jack <-  rep(1/(Ntr-1), (N-1))                  
+                        w.jack <-  rep(1/(Ntr-1), (N-1))
                         if (is.null(matchvar) == TRUE) { # no reweighting                         
                             w.jack[1:Nco] <- rep(-1/Nco, Nco)
                         } else {
@@ -650,7 +707,8 @@ tjbal.multi <- function(
                         .inorder = FALSE,
                         .packages = c("KBAL")
                         ) %dopar% {
-                        return(one.jack(data.list[[i]], K.list[[i]], drop.id.oneT0[j], ndims[i]))
+                        return(one.jack(data.list[[i]], K.list[[i]], drop.id.oneT0[j], ndims[i], 
+                            matchvar))
                     }
                     
                         ## save results
@@ -668,10 +726,11 @@ tjbal.multi <- function(
                         k <- k + 1                
                     }
                 } else { ## single core
-                    for (j in 1:nid) {                       
+                    for (j in 1:nid) {  
 
                         jack <- one.jack(data = data.list[[i]], 
-                            K = K.list[[i]], id = drop.id.oneT0[j], ndims = ndims[i])
+                            K = K.list[[i]], id = drop.id.oneT0[j], 
+                            ndims = ndims[i], matchvar = matchvar)
 
                         sub.att.oneT0[,j] <- jack$att
                         sub.att.avg.oneT0[j] <- jack$att.avg 
@@ -713,7 +772,7 @@ tjbal.multi <- function(
         ##################################
 
         ## critical value for a two-sided test
-        c.value <- qnorm(0.5 - conf.lvl/2)
+        c.value <- qnorm(0.5 + conf.lvl/2)
 
         se.att <- apply(att.jack, 1, function(vec) sd(vec, na.rm=TRUE)) * (Ntr-1)/sqrt(Ntr)
         se.att.avg <- sd(att.avg.jack, na.rm=TRUE) * (Ntr-1)/sqrt(Ntr) 
@@ -794,8 +853,11 @@ tjbal.multi <- function(
 
     ## save results
     out <- list(
+        data.wide = data,
         id.tr = id.tr,
         id.co = id.co,
+        Y.var = Y.var,
+        matchvar.list = matchvar.list,
         Ttot = Ttot,
         N = N,
         Ntr = Ntr,
@@ -804,6 +866,8 @@ tjbal.multi <- function(
         T0.all = T0.all,
         T0.tr = T0.tr,
         weights.co = weights.co,
+        Y.bar = Y.bar,
+        sub.weights.co = sub.weights.co,
         sub.Ytr.avg = sub.Ytr.avg,
         sub.Yct.avg = sub.Yct.avg,
         sub.att = sub.att,
@@ -813,7 +877,9 @@ tjbal.multi <- function(
         att = att,
         att.avg = att.avg,
         success = success,
-        bias.ratios = bias.ratios
+        bias.ratios = bias.ratios,
+        group.stats = group.stats,
+        bal.table.list = bal.table.list
         )
 
     if (vce == "jackknife") {
@@ -837,10 +903,9 @@ tjbal.single <- function(
     Y,
     D,
     X,
-    Y.match.periods = NULL,
-    Y.match.npre = TRUE, # fix the number of pre-periods for balancing when T0s are different
+    Y.match.time = NULL,
+    Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     Ttot,
-    Tpre,
     unit,
     demean = FALSE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
@@ -863,7 +928,9 @@ tjbal.single <- function(
     Ntr <- length(id.tr)
     Nco <- length(id.co)
     N <- Ntr + Nco 
-    T0 <- length(Tpre) 
+    T0 <- unique(data$T0[id.tr])
+    Tpre <- Ttot[1:T0]
+    Tpst <- Ttot[(T0+1):TT] 
 
     if (vce == "jackknife") {
         if (nsims > Ntr) {
@@ -871,16 +938,21 @@ tjbal.single <- function(
         } else {
             njacks <- nsims
         }
-    }
+    } 
 
-    if (is.null(Y.match.periods)==FALSE) {
-        Tpre <- setdiff(Tpre, Y.match.periods)
+    if (is.null(Y.match.npre)==FALSE) {
+        Y.match.time <- Ttot[max(1,(T0-Y.match.npre+1)):T0]
+        if (Y.match.npre == 0) {
+            Y.match.time <- "none"
+        }
     } else {
-        if (is.null(Y.match.npre) == FALSE) {
-            Tpre <- Ttot[(T0 - Y.match.npre + 1):T0]
-        } 
-    }              
-    Tpst <- Ttot[(T0+1):TT]    
+        if (is.null(Y.match.time)==FALSE) {
+           Y.match.time <- intersect(Tpre, Y.match.time)
+        } else {
+           Y.match.time <- Tpre 
+        }
+    }       
+ 
 
     if (demean == TRUE) { 
         Y.dm.var <- paste0(Y,".dm",Ttot)
@@ -889,19 +961,17 @@ tjbal.single <- function(
         colnames(outcome.dm) <- Y.dm.var
         data <- cbind.data.frame(data, outcome.dm) 
 
-        Y.match <- paste0(Y,".dm",Tpre)
+        Y.match <- paste0(Y,".dm",Y.match.time)
         Y.target <- paste0(Y,".dm",Ttot)
         Y.target.pst <- paste0(Y,".dm",Tpst)
     } else {
-        Y.match <- paste0(Y, Tpre)
+        Y.match <- paste0(Y, Y.match.time)
         Y.target <- paste0(Y, Ttot)
         Y.target.pst <- paste0(Y, Tpst)
     }
-    if (is.null(Y.match.periods)==FALSE) {
-        if (Y.match.periods == "none") { # do not match on pre-treatment Y
-            Y.match <- NULL
-        }
-    }    
+    if (Y.match.time[1] == "none") { # do not match on pre-treatment Y
+        Y.match <- NULL
+    } 
     matchvar <- c(Y.match, X)
 
     ## default weights
@@ -926,7 +996,7 @@ tjbal.single <- function(
                 printprogress = FALSE, sampledinpop = FALSE))
             , file = NULL)
 
-        if (kbal.out$earlyfail == FALSE) { 
+        if (kbal.out$earlyfail == TRUE) { 
             bias.ratio <- 1
         } else {
             bias.ratio <- c(kbal.out$biasbound.opt/kbal.out$biasbound.orig)            
@@ -934,7 +1004,7 @@ tjbal.single <- function(
 
         ## if success
         if (kbal.out$earlyfail == FALSE) {
-            success <- 1
+            success <- TRUE
             ndims <- kbal.out$numdims
             K <- kbal.out$K # save kernel matrix
             cat(paste0("bias.ratio = ", 
@@ -945,7 +1015,7 @@ tjbal.single <- function(
             w[id.tr] <- weights.tr  
             w[id.co] <- weights.co * (-1)  # controls add up to -1;
         } else {
-            success <- 0
+            success <- FALSE
             cat("\nSolution not found. Equal weights are being used.\n")            
         }
 
@@ -964,15 +1034,12 @@ tjbal.single <- function(
     Y.ct.bar <- Y.tr.bar - att
     Y.bar <- cbind(Y.tr.bar,Y.ct.bar, Y.co.bar)  
 
-    ## data
-    Y.tr = data[id.tr, Y.var, drop = FALSE]
-    Y.co = data[id.co, Y.var, drop = FALSE]    
-
+    
     #####################
     ## balance table
     #####################
     
-    if (is.null(matchvar)==FALSE && success == 1) {
+    if (is.null(matchvar)==FALSE) {
         
         weighted.sd <- function(vec, w) {sqrt(sum(w * (vec - weighted.mean(vec,w))^2))}
         if (Ntr>1) {
@@ -1216,7 +1283,7 @@ tjbal.single <- function(
         pvalue.att.avg <- (1 - pnorm(abs(z.att.avg)))*2
 
         ## critical value for a two-sided test
-        c.value <- qnorm(0.5 - conf.lvl/2)
+        c.value <- qnorm(0.5 + conf.lvl/2)
 
         ## confidence intervals
         CI.att <- cbind(att - c.value * se.att, att + c.value * se.att)
@@ -1250,8 +1317,7 @@ tjbal.single <- function(
     out <- list(data.wide = data,
             id.tr = id.tr,
             id.co = id.co,
-            Y.tr = Y.tr,
-            Y.co = Y.co,
+            Y.var = Y.var,
             weights.co = weights.co, # Nco * 1 vector
             Ttot = Ttot,
             Tpre = Tpre,
@@ -1305,16 +1371,16 @@ print.tjbal <- function(x,
     print(x$call, digits = 4)
     
     if (is.null(x$est.att.avg) == TRUE) { # no uncertainties
-        cat("\nAverage Treatment Effect on the Treated:\n")
-        print(x$att.avg, digits = 4)
         cat("\n   ~ by Period (including Pre-treatment Periods):\n")
         print(x$att, digits = 4)
+        cat("\nAverage Treatment Effect on the Treated:\n")
+        print(x$att.avg, digits = 4)
         cat("\nUncertainty estimates not available.\n")
     } else {
-        cat("\nAverage Treatment Effect on the Treated:\n")
-        print(x$est.att.avg, digits = 4)
         cat("\n   ~ by Period (including Pre-treatment Periods):\n")
         print(x$est.att, digits = 4)        
+        cat("\nAverage Treatment Effect on the Treated:\n")
+        print(x$est.att.avg, digits = 4)       
     }
 }
 
@@ -1324,7 +1390,8 @@ print.tjbal <- function(x,
 ##########
 
 plot.tjbal <- function(x,  
-    type = "gap", 
+    type = "gap", # c("gap","counterfactual","weights","balance")
+    subgroup = NULL, # subgroup plot when sameT0 == FALSE 
     xlim = NULL, 
     ylim = NULL,
     xlab = NULL, 
@@ -1333,7 +1400,6 @@ plot.tjbal <- function(x,
     legendOff = FALSE,
     main = NULL,
     raw = "none",
-    wmin = -20, ## minimal log weights
     stat = "mean",
     trim = TRUE, ## trim control group in ct plot
     trim.wtot = 0.9, ## show controls whose weights sum up to a number
@@ -1343,6 +1409,8 @@ plot.tjbal <- function(x,
     cex.lab = NULL, 
     cex.legend = NULL,
     cex.text = NULL,
+    log.weights = FALSE,
+    wmin = NULL, ## minimal log weights
     axis.adjust = FALSE,
     ...){
 
@@ -1382,14 +1450,13 @@ plot.tjbal <- function(x,
         }
     }
     if (is.null(ylim)==FALSE) {
-        ## if (type!="missing") {
-            if (is.numeric(ylim)==FALSE) {
-                stop("Some element in \"ylim\" is not numeric.")
-            } else {
-                if (length(ylim)!=2) {
-                    stop("ylim must be of length 2.")
-                }
+        if (is.numeric(ylim)==FALSE) {
+            stop("Some element in \"ylim\" is not numeric.")
+        } else {
+            if (length(ylim)!=2) {
+                stop("ylim must be of length 2.")
             }
+        }
     }
     if (is.null(xlab)==FALSE) {
         if (is.character(xlab) == FALSE) {
@@ -1412,7 +1479,7 @@ plot.tjbal <- function(x,
         if (! raw %in% c("none","band","all")) {
             cat("\"raw\" option misspecified. Reset to \"none\".")
             raw <- "none" 
-        }        
+        }      
     }
     if (is.null(trim.wtot)==FALSE) {
         if (is.numeric(trim.wtot)==FALSE) {
@@ -1423,6 +1490,20 @@ plot.tjbal <- function(x,
             }
         }
     }
+    if (is.null(subgroup)==FALSE) {
+        if (is.numeric(subgroup)==FALSE) {
+            stop("\"subgroup\" is not numeric.")
+        }
+        if (x$sameT0==TRUE) {
+            warning("Treatment starts at the same time")
+        } else {
+            if (!subgroup %in% 1:nrow(x$group.stats)) {
+                stop(paste0("There exist ",nrow(x$group.stats)," subgroups."))
+            }
+        }        
+    }
+    
+
     if (is.null(main)==FALSE) {
         if (is.character(main) == FALSE) {
             stop("\"main\" is not a string.")
@@ -1445,7 +1526,7 @@ plot.tjbal <- function(x,
       line.color <- "#AAAAAA70"
     } else {
       line.color <- "white"
-    }
+    }   
 
     #### font size
     ## title
@@ -1495,32 +1576,63 @@ plot.tjbal <- function(x,
     }
     
     ##-------------------------------##
-    ## Plotting
+    ## Take in data
     ##-------------------------------##  
 
-    Y.tr <- x$Y.tr
-    Y.co <- x$Y.co
-    tb <- x$est.att
-    Yb <- x$Y.bar[,1:2] ## treated average and counterfactual average
-    #tr <- x$tr
-    #pre <- x$pre
-    #post <- x$post
-    TT <- length(x$Ttot)
-    T0 <- x$T0 ## notice
-    Ntr <- x$Ntr
-    Nco <- x$Nco
-    N <- x$N 
-    time <- x$Ttot
-    w.co <- x$weights.co
+    sameT0 <- x$sameT0
+    data <- x$data.wide
+    Y.var <- x$Y.var
     id.co <- x$id.co
-    id.tr <- x$id.tr
+    time <- x$Ttot
+    TT <- length(x$Ttot)
+    Nco <- x$Nco
+
+    if (is.null(subgroup)==TRUE) {
+        att <- x$att
+        tb <- x$est.att
+        TT <- length(x$Ttot)
+        T0 <- x$T0 
+        Ntr <- x$Ntr
+        N <- x$N 
+        w.co <- x$weights.co        
+        id.tr <- x$id.tr
+        Y.tr <- data[id.tr, Y.var, drop = FALSE]
+        Y.co <- data[id.co, Y.var, drop = FALSE]
+        sameT0 <- x$sameT0
+        Yb <- x$Y.bar[,1:2] ## treated average and counterfactual average  
+        if (sameT0 == TRUE) {
+            matchvar <- x$matchvar
+            bal <- x$bal.table
+        }         
+    } else {  # make plots for subgroup
+        att <- x$sub.att[,subgroup]      
+        tb <- x$est.sub.att[,,subgroup]
+        T0 <- x$group.stats[subgroup,"T0"] 
+        Ntr <- x$group.stats[subgroup,"Ntr"] 
+        N <- Ntr + Nco        
+        w.co <- x$sub.weights.co[,subgroup]
+        id.tr <- x$id.tr[which(x$T0.tr == T0)] 
+        Y.tr <- data[id.tr, Y.var, drop = FALSE]
+        Y.co <- data[id.co, Y.var, drop = FALSE]
+        Y.tr.bar <- apply(data[id.tr, Y.var], 2, mean, na.rm=TRUE)
+        Y.ct.bar <- Y.tr.bar - att
+        Yb <- cbind(Y.tr.bar,Y.ct.bar) ## treated average and counterfactual average  
+        sameT0 <- TRUE
+        matchvar <- x$matchvar.list[[subgroup]]       
+        bal <- x$bal.table.list[[subgroup]]  
+    }
+
+
+    ##-------------------------------##
+    ## Plotting
+    ##-------------------------------##  
     
    
     ## parameters
     line.width <- c(1.2,0.5)
   
     ## type of plots
-    if ((type == "gap" && x$sameT0 == TRUE) | type == "counterfactual" ) {
+    if(type %in% c("gap","counterfactual") && sameT0 == TRUE) {
         if (is.numeric(time[1])==FALSE) {
             time <- 1:TT
         }
@@ -1536,7 +1648,7 @@ plot.tjbal <- function(x,
         time.label <- time[show]     
     }
 
-    if (type == "gap" && x$sameT0 == FALSE)  { ## variable treatment timing
+    if (type %in% c("gap","counterfactual") && sameT0 == FALSE)  { ## variable treatment timing
          ## recenter based on treatment timing
         time <- c(-(max(T0) -1) : (TT-min(T0)))
         TT <- length(time)
@@ -1545,11 +1657,10 @@ plot.tjbal <- function(x,
             show <- which(time>=xlim[1]& time<=xlim[2])     
         } else {
             show <- 1:length(time)    
-        }
-        
+        }        
     }
 
-    if (type == "gap" | type == "counterfactual") {
+    if (type %in% c("gap","counterfactual")) {
         nT <- length(show)
         time.label <- time[show]
         T.b <- 1:length(show)
@@ -1564,11 +1675,13 @@ plot.tjbal <- function(x,
     }
 
     ## confidence intervals
-    CI <- NULL
-    if (is.null(x$est.att)==TRUE) {
+    if (is.null(tb)==TRUE) {
         CI <- FALSE
     } else {
         CI <- TRUE
+        if (Ntr == 1) { # for subgroup
+            CI <- FALSE
+        }
     }
 
     ############  START  ###############
@@ -1577,7 +1690,7 @@ plot.tjbal <- function(x,
 
         max.count.pos <- time[min(intersect(show,which(time > time.bf)))]
         
-        if (x$Ntr>1) {
+        if (Ntr>1) {
             maintext <- "Average Treatment Effect on the Treated"
         } else {
             maintext <- "Treatment Effect on the Treated"
@@ -1603,10 +1716,11 @@ plot.tjbal <- function(x,
         ## construct data for plotting
         if (CI==FALSE) { 
             cat("Uncertainty estimates not available.\n")
-            data <- cbind.data.frame(time, ATT = x$att)[show,]             
+            ntreated <- rep(Ntr, length(time))
+            data <- cbind.data.frame(time, ATT = att, n.Treated = ntreated)[show,]             
         } else {
             data <- cbind.data.frame(time, tb)[show,]
-        }
+        }        
 
         # height of the histogram
         if (CI == FALSE) {
@@ -1614,7 +1728,7 @@ plot.tjbal <- function(x,
                 rect.length <- (ylim[2] - ylim[1]) / 5
                 rect.min <- ylim[1]
             } else {
-                rect.length <- (max(data[,"ATT"]) - min(data[,"ATT"]))/2
+                rect.length <- (max(data[,"ATT"]) - min(data[,"ATT"]))/4
                 rect.min <- min(data[,"ATT"]) - rect.length
             } 
         } else {
@@ -1622,11 +1736,11 @@ plot.tjbal <- function(x,
                 rect.length <- (ylim[2] - ylim[1]) / 5
                 rect.min <- ylim[1]
             } else {
-                rect.length <- (max(data[,"CI.upper"]) - min(data[,"CI.lower"]))/2
+                rect.length <- (max(data[,"CI.upper"]) - min(data[,"CI.lower"]))/4
                 rect.min <- min(data[,"CI.lower"]) - rect.length
             }  
-        } 
-                         
+        }
+
         ## plotting
         p <- ggplot(data)
         if (theme.bw == TRUE) {
@@ -1642,7 +1756,7 @@ plot.tjbal <- function(x,
             data[,"xmin"] <- data[,"time"] - 0.2
             data[,"xmax"] <- data[,"time"] + 0.2
             data[,"ymin"] <- rep(rect.min, nrow(data))
-            data[,"ymax"] <- rect.min + (x$ntreated/Ntr) * 0.8 * rect.length
+            data[,"ymax"] <- rect.min + (data$n.Treated/Ntr) * 0.8 * rect.length
             xx <- range(data$time)
             p <- p + geom_rect(data = data, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), 
                 fill = "grey70", colour = "grey69", alpha = 0.4, size = 0.2)
@@ -1650,7 +1764,6 @@ plot.tjbal <- function(x,
                 y = max(data$ymax) + 0.2 * rect.length, 
                 label = paste("Ntr =",Ntr), size = cex.text * 0.8, hjust = 0.5)
         }
-
 
         ## point estimates
         p <- p + geom_line(aes(time, ATT), size = 1.2)
@@ -1660,26 +1773,12 @@ plot.tjbal <- function(x,
             p <- p + geom_ribbon(aes(x = time, ymin=CI.lower, ymax=CI.upper),alpha=0.2)
         }
 
-        ## legend and axes
-        p <- p + theme(legend.text = element_text(margin = margin(r = 10, unit = "pt"), size = cex.legend),
-         legend.position = legend.pos,
-         legend.background = element_rect(fill="transparent",colour=NA),
-         axis.title=element_text(size=cex.lab),
-         axis.title.x = element_text(margin = margin(t = 8, r = 0, b = 0, l = 0)),
-         axis.title.y = element_text(margin = margin(t = 0, r = 0, b = 0, l = 0)),
-         axis.text = element_text(color="black", size=cex.axis),
-         axis.text.x = element_text(size = cex.axis, angle = angle, hjust=x.h, vjust=x.v),
-         axis.text.y = element_text(size = cex.axis),
-         plot.title = element_text(size = cex.main, hjust = 0.5, face="bold", margin = margin(10, 0, 10, 0)))
-
-        
-
         
     } else if (type=="counterfactual") { 
 
-        if (Ntr == 1| x$sameT0==TRUE) { # same/single treatment timing
+        #if (Ntr == 1| sameT0==TRUE) { # same/single treatment timing
 
-            if (length(x$matchvar)==0) { ## no balancing
+            if (length(matchvar)==0) { ## no balancing
                 trim = FALSE
             }
 
@@ -1712,34 +1811,60 @@ plot.tjbal <- function(x,
                 maintext <- "Treated and Counterfactual Averages"
             }
 
+            if (sameT0==TRUE) {
+                ntreated <- rep(Ntr, length(time))
+            } else {
+                ntreated <- x$ntreated
+            }
+
             if (raw == "none") {
-                data <- cbind.data.frame("time" = rep(time[show],2),
-                 "outcome" = c(Yb[show,1],
-                   Yb[show,2]),
-                 "type" = c(rep("tr",nT),
-                    rep("co",nT))) 
-                        ## theme 
+
+                data <- cbind.data.frame(
+                    "time" = rep(time[show],2),
+                    "outcome" = c(Yb[show,1],Yb[show,2]),
+                    "type" = c(rep("tr",nT),rep("co",nT)),
+                    "n.Treated" = rep(ntreated[show],2)) 
+
+                # height of the histogram
+                max.count.pos <- time[min(intersect(show,which(time > time.bf)))]
+                if (length(ylim) != 0) {
+                    rect.length <- (ylim[2] - ylim[1]) / 5
+                    rect.min <- ylim[1]
+                } else {
+                    rect.length <- (max(data[,"outcome"]) - min(data[,"outcome"]))/4
+                    rect.min <- min(data[,"outcome"]) - rect.length
+                } 
+
+                
+                ## theme 
                 p <- ggplot(data)
                 if (theme.bw == TRUE) {
                   p <- p + theme_bw()
                 }
                 p <- p + xlab(xlab) +  ylab(ylab) +
-                geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
-                ## shade in the post-treatment period
-                #annotate("rect", xmin= time.bf, xmax= Inf,
-                # ymin=-Inf, ymax=Inf, alpha = .3) +
-                theme(legend.position = legend.pos,
-                  axis.text.x = element_text(angle = angle, hjust=x.h, vjust=x.v),
-                  plot.title = element_text(size=20,
-                    hjust = 0.5,
-                    face="bold",
-                    margin = margin(10, 0, 10, 0)))
-                        ## main
-                p <- p + geom_line(aes(time, outcome,
+                geom_vline(xintercept=time.bf,colour=line.color,size = 2) 
+
+                ## histogram
+                if (count == TRUE) {
+                    data[,"xmin"] <- data[,"time"] - 0.2
+                    data[,"xmax"] <- data[,"time"] + 0.2
+                    data[,"ymin"] <- rep(rect.min, nrow(data))
+                    data[,"ymax"] <- rect.min + (data$n.Treated/Ntr) * 0.8 * rect.length
+                    xx <- range(data$time)
+                    p <- p + geom_rect(data = data[which(data$type == "tr"),], aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), 
+                        fill = "grey70", colour = "grey69", alpha = 0.4, size = 0.2)
+                    p <- p + annotate("text", x = max.count.pos + 0.00 * (xx[2]-xx[1]), 
+                        y = max(data$ymax) + 0.2 * rect.length, 
+                        label = paste("Ntr =",Ntr), size = cex.text * 0.8, hjust = 0.5)
+                }
+                
+                ## main
+                p <- p + geom_line(data = data, aes(time, outcome,
                    colour = type,
                    size = type,
                    linetype = type))
 
+             
                 ## legend
                 set.limits = c("tr","co")
                 if (Ntr == 1) {
@@ -1786,7 +1911,7 @@ plot.tjbal <- function(x,
                 data <- cbind.data.frame("time" = rep(time[show],2),
                    "outcome" = c(Yb[show,1], Yb[show,2]),"type" = c(rep("tr",nT),rep("co",nT)))
 
-                if (Ntr == 1) {
+                if (Ntr <= 10) {
                     data.band <- cbind.data.frame(time, Y.co.band)[show,]
                     colnames(data.band) <- c("time","co.lower","co.upper")
                 } else {
@@ -1815,12 +1940,16 @@ plot.tjbal <- function(x,
                    size = type,
                    linetype = type))
                 ## band
-                if (Ntr == 1) {
+                if (Ntr <= 10) {
                     p <- p + geom_ribbon(data = data.band,
                         aes(ymin = co.lower, ymax = co.upper, x=time),
                         alpha = 0.15, fill = "steelblue")
                     set.limits = c("tr","co","co.band")
-                    set.labels = c("Treated", "Estimated Y(0)",co.band.label)
+                    if (Ntr == 1) {
+                        set.labels = c("Treated", "Estimated Y(0)",co.band.label)
+                    } else {
+                        set.labels = c("Treated Average", "Estimated Y(0)",co.band.label)
+                    }
                     set.colors = c("black","steelblue","#4682B470")
                     set.linetypes = c("solid","longdash","solid")
                     set.linewidth = c(rep(line.width[1],2),4)                    
@@ -1946,7 +2075,9 @@ plot.tjbal <- function(x,
             # key width in legend
             p <- p + theme(legend.key.width = unit(2.5,"line"))   
             
-        } else { ## different treatment timing
+        #} 
+
+        if (FALSE) { ## different treatment timing
             maintext <- "Treated and Counterfactual Averages"
 
             ## axes labels
@@ -2023,153 +2154,43 @@ plot.tjbal <- function(x,
                             colour = guide_legend(title=NULL, nrow=1),
                             size = guide_legend(title=NULL, nrow=1)) 
                     
-            } else if  (raw == "band") {
-                    
-                Y.tr.band <- t(apply(Y.tr.aug, 1, quantile, prob=c(0.05,0.95),na.rm=TRUE))
-                ## Y.co.band <- t(apply(Y.co, 1, quantile, prob=c(0.05,0.95),na.rm=TRUE))
-                    
-                data <- cbind.data.frame("time" = rep(time[show],2),
-                                         "outcome" = c(Yb[show,1],
-                                                       Yb[show,2]),
-                                         "type" = c(rep("tr",nT),
-                                                    rep("co",nT)))
-
-                data.band <- cbind.data.frame(time, Y.tr.band)[show,]
-                colnames(data.band) <- c("time","tr.lower","tr.upper")
-                    
-                ## theme 
-                p <- ggplot(data)
-                if (theme.bw == TRUE) {
-                  p <- p + theme_bw()
-                }
-                p <- p + xlab(xlab) +  ylab(ylab) +
-                    geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
-                    annotate("rect", xmin= time.bf, xmax= Inf,
-                             ymin=-Inf, ymax=Inf, alpha = .3) +
-                    theme(legend.position = legend.pos,
-                          axis.text.x = element_text(angle = angle, hjust=x.h, vjust=x.v),
-                          plot.title = element_text(size=20,
-                                                    hjust = 0.5,
-                                                    face="bold",
-                                                    margin = margin(10, 0, 10, 0)))
-                ## main
-                p <- p + geom_line(aes(time, outcome,
-                                       colour = type,
-                                       size = type,
-                                       linetype = type))
-                ## band
-                p <- p + geom_ribbon(data = data.band,
-                                     aes(ymin = tr.lower, ymax = tr.upper, x=time),
-                                         alpha = 0.15, fill = "red")
-
-                set.limits = c("tr","co","tr.band")
-                set.labels = c("Treated Average",
-                               "Estimated Y(0) Average",
-                                "Treated 5-95% Quantiles")
-                set.colors = c("red","steelblue","#FF000030")
-                set.linetypes = c("solid","longdash","solid")
-                set.linewidth = c(rep(line.width[1],2),4)
-
-                p <- p + scale_colour_manual(limits = set.limits,
-                                             labels = set.labels,
-                                             values =set.colors) +
-                    scale_linetype_manual(limits = set.limits,
-                                          labels = set.labels,
-                                          values = set.linetypes) +
-                    scale_size_manual(limits = set.limits,
-                                      labels = set.labels,
-                                      values = set.linewidth) +
-                    guides(linetype = guide_legend(title=NULL, nrow=2, byrow=TRUE),
-                           colour = guide_legend(title=NULL, nrow=2, byrow=TRUE),
-                           size = guide_legend(title=NULL, nrow=2, byrow=TRUE)) 
-                    
-            } else if (raw == "all") { ## plot all the raw data
-                    
-                data <- cbind.data.frame("time" = rep(time[show],(2 + Ntr)),
-                                         "outcome" = c(Yb[show,1],
-                                                       Yb[show,2],
-                                                       c(Y.tr.aug[show,])),
-                                         "type" = c(rep("tr",nT),
-                                                    rep("co",nT),
-                                                    rep("raw.tr",(Ntr * nT))),
-                                          "id" = c(rep("tr",nT),
-                                                  rep("co",nT),
-                                                  rep(c(x$id.tr),
-                                                      each = nT))) 
-                ## theme
-                p <- ggplot(data)
-                if (theme.bw == TRUE) {
-                  p <- p + theme_bw()
-                }
-                p <- p + xlab(xlab) +  ylab(ylab) +
-                    geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
-                    annotate("rect", xmin= time.bf, xmax= Inf,
-                             ymin=-Inf, ymax=Inf, alpha = .3) +
-                    theme(legend.position = legend.pos,
-                          axis.text.x = element_text(angle = angle, hjust=x.h, vjust=x.v),
-                          plot.title = element_text(size=20,
-                                                    hjust = 0.5,
-                                                    face="bold",
-                                                    margin = margin(10, 0, 10, 0))) 
-                ## main
-                p <- p + geom_line(aes(time, outcome,
-                                       colour = type,
-                                       size = type,
-                                       linetype = type,
-                                       group = id))
-                ## legend
-                set.limits = c("tr","co","raw.tr")
-                set.labels = c("Treated Average",
-                               "Estimated Y(0) Average",
-                               "Treated Raw Data")
-                set.colors = c("red","steelblue","#FC8D6280")
-                set.linetypes = c("solid","longdash","solid")
-                set.linewidth = c(rep(line.width[1],2),line.width[2])
-                    
-                p <- p + scale_colour_manual(limits = set.limits,
-                                             labels = set.labels,
-                                             values =set.colors) +
-                    scale_linetype_manual(limits = set.limits,
-                                          labels = set.labels,
-                                          values = set.linetypes) +
-                    scale_size_manual(limits = set.limits,
-                                      labels = set.labels,
-                                      values = set.linewidth) +
-                    guides(linetype = guide_legend(title=NULL, nrow=2, byrow=TRUE),
-                           colour = guide_legend(title=NULL, nrow=2, byrow=TRUE),
-                           size = guide_legend(title=NULL, nrow=2, byrow=TRUE)) 
-            }
-
-            ## title
-            if (is.null(main) == TRUE) {
-                p <- p + ggtitle(maintext)
-            } else if (main!="") {
-                p <- p + ggtitle(main)
-            }
-
-            ## ylim
-            if (is.null(ylim) == FALSE) {
-                p <- p + coord_cartesian(ylim = ylim)
-            }
-            suppressWarnings(print(p))
+            } # end of raw = "none"        
 
             
-        }
+
+            
+        } # end of different treatment timing
 
     } else if (type == "weights") {
 
+        if (sameT0==FALSE) {
+            cat("Weighted by the number of treated unit in each subgroup.")
+        }
+
         maintext <- "Weights of the Control Units"
-        logw <- log(x$weights.co * x$Ntr)
-        logw[logw < wmin] <- wmin
-        w.min <- min(logw)
-        w.max <- max(logw)
+        w <- w.co
+        if (log.weights == TRUE) {
+            w <- log(w)
+        }
+        if (is.null(xlab)==TRUE) {
+            if (log.weights==TRUE) {
+                xlab <- "Weight (logarithmic)"
+                w[w < wmin] <- wmin
+            } else {
+                xlab <- "Weight"
+            }            
+        }
+        if (is.null(ylab)==TRUE) {
+            ylab <- "Counts"
+        }        
+        w.min <- min(w)
+        w.max <- max(w)
         if (w.min!=w.max) {
             bw <- abs(w.max - w.min)/30
         } else {
             bw <- abs(w.min)/20            
         }
-        p <- qplot(logw, col = I("gray70"), binwidth = bw,
-          xlab = "Weight (logarithmic)", ylab = "Counts")
+        p <- qplot(w, col = I("gray70"), binwidth = bw, xlab = xlab, ylab = ylab)
         if (theme.bw == TRUE) {
           p <- p + theme_bw()
         }
@@ -2187,9 +2208,11 @@ plot.tjbal <- function(x,
 
     }  else if (type == "balance") {
 
-        if (is.null(x$matchvar)==TRUE) {
-            stop("No covariates being matched on.")            
+        if (sameT0==FALSE) {
+            stop("Requires treatment starts at the same time or specifying a subgroup.")
         }
+
+        
         if (!stat %in% c("mean","sd")) {
             stop("Wrong specification for \"stat\".")
         }
@@ -2197,9 +2220,16 @@ plot.tjbal <- function(x,
             stop("Standard deviation does not exist with one treated unit.")
         }
 
+        if (is.null(matchvar)==TRUE) {
+            stop("No covariates being balanced on")            
+        }
 
-        maintext <- "Covariate Balance"
-        bal <- x$bal.table
+        if (is.null(subgroup)==TRUE) {
+            maintext <- "Covariate Balance"
+        } else {
+            maintext <- paste0("Covariate Balance (T0 = ",time[T0],")")
+        }
+        
         nvar <- nrow(bal)
         var <- rep(rownames(bal),2)
         var <- factor(var, levels = var[nvar:1])
@@ -2225,16 +2255,6 @@ plot.tjbal <- function(x,
             xlim <- c(-maxv, maxv)
         } 
         p <- p + coord_cartesian(xlim = xlim)
-        # p <- p + 
-        # theme(panel.grid.major = element_line(color = "gray87"),
-        #   panel.grid.minor = element_line(color = "gray90"),
-        #   panel.background = element_rect(fill = "white", color = "black"),
-        #   axis.text.x = element_text(color = "black"),
-        #   axis.text.y = element_text(color = "black"),
-        #   plot.title = element_text(hjust = 0.5),
-        #   legend.title = element_blank(),
-        #   legend.position = legend.pos
-        #   )
         if (theme.bw == TRUE) {
           p <- p + theme_bw()
         }
@@ -2251,6 +2271,19 @@ plot.tjbal <- function(x,
 
     }
 
+    ## legend and axes
+    p <- p + theme(legend.text = element_text(margin = margin(r = 10, unit = "pt"), size = cex.legend),
+       legend.position = legend.pos,
+       legend.background = element_rect(fill="transparent",colour=NA),
+       axis.title=element_text(size=cex.lab),
+       axis.title.x = element_text(margin = margin(t = 8, r = 0, b = 0, l = 0)),
+       axis.title.y = element_text(margin = margin(t = 0, r = 0, b = 0, l = 0)),
+       axis.text = element_text(color="black", size=cex.axis),
+       axis.text.x = element_text(size = cex.axis, angle = angle, hjust=x.h, vjust=x.v),
+       axis.text.y = element_text(size = cex.axis),
+       plot.title = element_text(size = cex.main, hjust = 0.5, face="bold", margin = margin(10, 0, 10, 0)))
+
+
     ## title
     if (is.null(main) == TRUE) {
         p <- p + ggtitle(maintext)
@@ -2262,8 +2295,6 @@ plot.tjbal <- function(x,
     if (is.null(ylim) == FALSE) {
         p <- p + coord_cartesian(ylim = ylim)
     }
-
-
 
 
     suppressWarnings(print(p))
