@@ -12,6 +12,7 @@ tjbal <- function(
     X = NULL, # time-invariant covariates
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
+    trim.npre = 0, # drop units with <= certain periods of pre-treatment data
     Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
@@ -40,6 +41,7 @@ tjbal.formula <- function(
     data, # data in long form
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
+    trim.npre = 0, # drop units with <= certain periods of pre-treatment data
     Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
@@ -78,7 +80,7 @@ tjbal.formula <- function(
     ## run the model
     out <- tjbal.default(data = data, Y = Yname,
                           D = Dname, X = Xname,
-                          X.avg.time = X.avg.time, index = index, 
+                          X.avg.time = X.avg.time, index = index, trim.npre = trim.npre,
                           Y.match.time= Y.match.time, Y.match.npre = Y.match.npre,  
                           demean = demean, kernel = kernel, sigma = sigma,
                           maxnumdims = maxnumdims, kbal.step = kbal.step, print.baltable = print.baltable, 
@@ -100,6 +102,7 @@ tjbal.default <- function(
     X = NULL, # time-invariant covariates
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
+    trim.npre = 0, # drop units with <= certain periods of pre-treatment data
     Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
@@ -151,6 +154,14 @@ tjbal.default <- function(
         nsims <- nboots
     } else {
         nsims <- 500
+    }
+
+
+    if (is.null(Y.match.time)==FALSE) {
+        if (Y.match.time == "none") {
+            Y.match.pre <- 0
+            Y.match.time <- NULL
+        }         
     }
 
 
@@ -207,18 +218,41 @@ tjbal.default <- function(
     }
     
     ##treatment indicator
-    D<- matrix(data[,Dname],TT,N)
+    D.sav <- D<- matrix(data[,Dname],TT,N)
 
     ## once treated, always treated
     D <- apply(D, 2, function(vec){cumsum(vec)})
+    T0 <- TT - D[TT,] # a vector, number of pre-treatment periods for each unit
+
+    ## drop units with too few pre-treatment periods
+    id.drop <- which(T0 <= trim.npre)
+    N.drop <- length(id.drop)
     D <- ifelse(D > 0, 1, 0)
+    if (sum(abs(D-D.sav))!=0) {
+        cat("\nTreatment status changed to \"treated\" after a unit has even been treated; in other words, no switch on-and-off is allowed.\n")
+    }
+    if (N.drop>0) {
+        N <- N - N.drop
+        D <- D[,-id.drop, drop = FALSE]
+        data <- data[rep(T0,each = TT)>trim.npre,]
+        units <- units[-id.drop]
+        T0 <- T0[-id.drop]
+        cat(paste0("\nDrop ",length(id.drop)," units with ",trim.npre," or fewer pre-treatment periods.\n"))
+    }
+    
 
     ## treatment
     treat <-ifelse(D[TT,]==1, 1, 0)     # cross-sectional: treated unit
     id.tr <- which(treat == 1)
     id.co <- which(treat == 0)
     Ntr <- length(id.tr)
-    Nco <- length(id.co)    
+    Nco <- length(id.co) 
+    if (Ntr == 0) {
+        stop("No treated units remain.")
+    } 
+    if (Nco == 0) {
+        stop("No control units remain.")
+    }
 
     ## check the number of treated units
     if (Ntr <= 5) {
@@ -227,9 +261,9 @@ tjbal.default <- function(
     }    
 
     ## treatment timing
-    T0 <- apply((D==0),2,sum) 
     T0.tr <- T0[id.tr]
     T0.min<-min(T0.tr)
+
     ## same timing: 
     if (Ntr==1) {
         sameT0 <- TRUE
@@ -387,7 +421,6 @@ tjbal.multi <- function(
     seed = 1234  
     ) { 
 
-
     TT <- length(Ttot)
     id.tr <- which(data$tr == 1)
     id.co <- which(data$tr == 0)
@@ -412,7 +445,7 @@ tjbal.multi <- function(
     ## recenter based on treatment timing
     time.adj <- c(-(T0.max -1) : (TT-T0.min))
     TT.adj <- length(time.adj)
-    
+
     ## storage
     sub.weights.co <- matrix(NA, length(id.co), nT0) # id.co * T0.unique
     rownames(sub.weights.co) <- units[id.co]
@@ -428,7 +461,6 @@ tjbal.multi <- function(
     colnames(sub.Ytr.adj) <-colnames(sub.ntr.pst) <- colnames(sub.ntr) <- colnames(sub.att.adj) <- T0.names
     bias.ratios <- success <- rep(NA, length(T0.unique))    
 
-
     ## save subsets of the original data, K matrix, and variables to be balanced on
     bal.table.list <- matchvar.list <- K.list <- data.list <- vector("list", length = nT0)  
     ## save number of dimensions
@@ -441,21 +473,25 @@ tjbal.multi <- function(
         T0 <- T0.unique[i]
         id.tr.one <- which(T0.all == T0)        
         Tpre <- Ttot[1:T0]
+        Tpst <- Ttot[(T0+1):TT]
         Ntr.one <- length(id.tr.one)
         N.one <- Ntr.one + Nco
+        Y.match.time.oneT0 <- Y.match.time
 
         if (is.null(Y.match.npre)==FALSE) {
-            Y.match.time <- Ttot[max(1,(T0-Y.match.npre+1)):T0]
-        } else {
-            if (is.null(Y.match.time)==FALSE) {
-                Y.match.time <- intersect(Tpre, Y.match.time)
+            if (Y.match.npre == 0) {
+                Y.match.time.oneT0 <- NULL
             } else {
-               Y.match.time <- Tpre 
-           }
+                Y.match.time.oneT0 <- Ttot[max(1,(T0-Y.match.npre+1)):T0]
+            }            
+        } else {
+            if (is.null(Y.match.time.oneT0)==FALSE) {
+                Y.match.time.oneT0 <- intersect(Tpre, Y.match.time.oneT0)                
+            } else {
+                Y.match.time.oneT0 <- Tpre                
+            }
         }   
-        Tpst <- Ttot[(T0+1):TT]
-
-
+        
         ## remove other treated 
         data.oneT0 <- data[c(id.co,id.tr.one),]
         
@@ -465,15 +501,15 @@ tjbal.multi <- function(
             outcome.dm <- data.oneT0[, paste0(Y, Ttot), drop = FALSE] - matrix(Ypre.mean, N.one, TT) # N * TT
             colnames(outcome.dm) <- Y.dm.var
             data.oneT0 <- cbind.data.frame(data.oneT0, outcome.dm) 
-            Y.match <- paste0(Y,".dm",Y.match.time)
+            Y.match <- paste0(Y,".dm",Y.match.time.oneT0)
             Y.target <- paste0(Y,".dm",Ttot)
             Y.target.pst <- paste0(Y,".dm",Tpst)
         } else {            
-            Y.match <- paste0(Y, Y.match.time)
+            Y.match <- paste0(Y, Y.match.time.oneT0)
             Y.target <- paste0(Y, Ttot)
             Y.target.pst <- paste0(Y, Tpst)
         }
-        if (Y.match.time[1] == "none" || Y.match.npre == 0) { # do not match on pre-treatment Y
+        if (is.null(Y.match.time.oneT0)==TRUE) { # do not match on pre-treatment Y
             Y.match <- NULL
         } 
         matchvar <- c(Y.match, X)
@@ -941,18 +977,19 @@ tjbal.single <- function(
     } 
 
     if (is.null(Y.match.npre)==FALSE) {
-        Y.match.time <- Ttot[max(1,(T0-Y.match.npre+1)):T0]
         if (Y.match.npre == 0) {
-            Y.match.time <- "none"
-        }
-    } else {
-        if (is.null(Y.match.time)==FALSE) {
-           Y.match.time <- intersect(Tpre, Y.match.time)
+            Y.match.time <- NULL
         } else {
-           Y.match.time <- Tpre 
+            Y.match.time <- Ttot[max(1,(T0-Y.match.npre+1)):T0]
+        }            
+    } else {
+        if (is.null(Y.match.time.oneT0)==FALSE) {
+            Y.match.time <- intersect(Tpre, Y.match.time)                
+        } else {
+           Y.match.time <- Tpre                
         }
-    }       
- 
+    }           
+
 
     if (demean == TRUE) { 
         Y.dm.var <- paste0(Y,".dm",Ttot)
@@ -969,7 +1006,7 @@ tjbal.single <- function(
         Y.target <- paste0(Y, Ttot)
         Y.target.pst <- paste0(Y, Tpst)
     }
-    if (Y.match.time[1] == "none") { # do not match on pre-treatment Y
+    if (is.null(Y.match.time) == TRUE) { # do not match on pre-treatment Y
         Y.match <- NULL
     } 
     matchvar <- c(Y.match, X)
@@ -1479,6 +1516,9 @@ plot.tjbal <- function(x,
         if (! raw %in% c("none","band","all")) {
             cat("\"raw\" option misspecified. Reset to \"none\".")
             raw <- "none" 
+        }
+        if (x$sameT0==FALSE && is.null(subgroup)==TRUE) {
+            raw <- "none"
         }      
     }
     if (is.null(trim.wtot)==FALSE) {
@@ -1776,12 +1816,10 @@ plot.tjbal <- function(x,
         
     } else if (type=="counterfactual") { 
 
-        #if (Ntr == 1| sameT0==TRUE) { # same/single treatment timing
-
+        if (sameT0 == TRUE) {            
             if (length(matchvar)==0) { ## no balancing
-                trim = FALSE
+                trim <- FALSE
             }
-
             if (trim == TRUE & raw %in% c("band","all")) {
                 Nco <-sum(1 - (cumsum(sort(w.co,decreasing = TRUE))>trim.wtot)) + 1  # how many control units left
                 trim.id<- order(w.co, decreasing = TRUE)[1:Nco]
@@ -1792,48 +1830,52 @@ plot.tjbal <- function(x,
             } else {
                 co.label <- "Controls"
             }
+        }
 
-            ## axes labels
-            if (is.null(xlab)==TRUE) {
-                xlab <- x$index[2]
-            } else if (xlab == "") {
-                xlab <- NULL
-            }
-            if (is.null(ylab)==TRUE) {
-                ylab <- x$Yname
-            } else if (ylab == "") {
-                ylab <- NULL
-            }
+        if (sameT0==TRUE) {
+            ntreated <- rep(Ntr, length(time))
+        } else {
+            ntreated <- x$ntreated
+        }
+        
+        
+        ## axes labels
+        if (is.null(xlab)==TRUE) {
+            xlab <- x$index[2]
+        } else if (xlab == "") {
+            xlab <- NULL
+        }
+        if (is.null(ylab)==TRUE) {
+            ylab <- x$Yname
+        } else if (ylab == "") {
+            ylab <- NULL
+        }
 
-            if (Ntr == 1) {
-                maintext <- "Treated and Counterfactual Trajectories"
-            } else {
-                maintext <- "Treated and Counterfactual Averages"
-            }
+        if (Ntr == 1) {
+            maintext <- "Treated and Counterfactual Trajectories"
+        } else {
+            maintext <- "Treated and Counterfactual Averages"
+        }
 
-            if (sameT0==TRUE) {
-                ntreated <- rep(Ntr, length(time))
-            } else {
-                ntreated <- x$ntreated
-            }
+        
 
-            if (raw == "none") {
+        if (raw == "none") {
 
-                data <- cbind.data.frame(
-                    "time" = rep(time[show],2),
-                    "outcome" = c(Yb[show,1],Yb[show,2]),
-                    "type" = c(rep("tr",nT),rep("co",nT)),
-                    "n.Treated" = rep(ntreated[show],2)) 
+            data <- cbind.data.frame(
+                "time" = rep(time[show],2),
+                "outcome" = c(Yb[show,1],Yb[show,2]),
+                "type" = c(rep("tr",nT),rep("co",nT)),
+                "n.Treated" = rep(ntreated[show],2)) 
 
                 # height of the histogram
-                max.count.pos <- time[min(intersect(show,which(time > time.bf)))]
-                if (length(ylim) != 0) {
-                    rect.length <- (ylim[2] - ylim[1]) / 5
-                    rect.min <- ylim[1]
-                } else {
-                    rect.length <- (max(data[,"outcome"]) - min(data[,"outcome"]))/4
-                    rect.min <- min(data[,"outcome"]) - rect.length
-                } 
+            max.count.pos <- time[min(intersect(show,which(time > time.bf)))]
+            if (length(ylim) != 0) {
+                rect.length <- (ylim[2] - ylim[1]) / 5
+                rect.min <- ylim[1]
+            } else {
+                rect.length <- (max(data[,"outcome"]) - min(data[,"outcome"]))/4
+                rect.min <- min(data[,"outcome"]) - rect.length
+            } 
 
                 
                 ## theme 
@@ -2075,93 +2117,10 @@ plot.tjbal <- function(x,
             # key width in legend
             p <- p + theme(legend.key.width = unit(2.5,"line"))   
             
-        #} 
 
-        if (FALSE) { ## different treatment timing
-            maintext <- "Treated and Counterfactual Averages"
+        
 
-            ## axes labels
-            if (is.null(xlab)==TRUE) {
-                xlab <- paste("Time relative to Treatment")
-            } else if (xlab == "") {
-                xlab <- NULL
-            }
-            if (is.null(ylab)==TRUE) {
-                ylab <- x$Yname
-            } else if (ylab == "") {
-                ylab <- NULL
-            }
-            
-            xx <- ct.adjsut(x$Y.tr, x$Y.ct, x$T0)
-
-            time <- xx$timeline
-            Yb <- xx$Yb
-            Y.tr.aug <- xx$Y.tr.aug
-            ## Y.ct.aug <- xx$Y.ct.aug
-            time.bf <- 0 ## before treatment
-
-            if (!is.null(xlim)) {
-                show <- which(time>=xlim[1]& time<=xlim[2])
-            } else {
-                show <- 1:length(time)
-            }
-            nT <- length(show)
-
-            if (raw == "none") {
-                data <- cbind.data.frame("time" = rep(time[show],2),
-                                         "outcome" = c(Yb[show,1],
-                                                       Yb[show,2]),
-                                         "type" = c(rep("tr",nT),
-                                                    rep("co",nT))) 
-                ## theme 
-                p <- ggplot(data) 
-                if (theme.bw == TRUE) {
-                  p <- p + theme_bw()
-                }
-                p <- p + xlab(xlab) +  ylab(ylab) +
-                    geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
-                    annotate("rect", xmin= time.bf, xmax= Inf,
-                                ymin=-Inf, ymax=Inf, alpha = .3) +
-                    theme(legend.position = legend.pos,
-                          axis.text.x = element_text(angle = angle, hjust=x.h, vjust=x.v),
-                          plot.title = element_text(size=20,
-                                                    hjust = 0.5,
-                                                    face="bold",
-                                                    margin = margin(10, 0, 10, 0)))
-                ## main
-                p <- p + geom_line(aes(time, outcome,
-                                       colour = type,
-                                       size = type,
-                                       linetype = type))
-
-                ## legend
-                set.limits = c("tr","co")
-                set.labels = c("Treated Average",
-                               "Estimated Y(0) Average")
-                set.colors = c("red","steelblue")
-                set.linetypes = c("solid","longdash")
-                set.linewidth = rep(line.width[1],2)
-                p <- p + scale_colour_manual(limits = set.limits,
-                                             labels = set.labels,
-                                             values =set.colors) +
-                    scale_linetype_manual(limits = set.limits,
-                                          labels = set.labels,
-                                          values = set.linetypes) +
-                    scale_size_manual(limits = set.limits,
-                                      labels = set.labels,
-                                      values = set.linewidth) +
-                    guides(linetype = guide_legend(title=NULL, nrow=1),
-                            colour = guide_legend(title=NULL, nrow=1),
-                            size = guide_legend(title=NULL, nrow=1)) 
-                    
-            } # end of raw = "none"        
-
-            
-
-            
-        } # end of different treatment timing
-
-    } else if (type == "weights") {
+        } else if (type == "weights") {
 
         if (sameT0==FALSE) {
             cat("Weighted by the number of treated unit in each subgroup.")
@@ -2206,7 +2165,7 @@ plot.tjbal <- function(x,
                 p <- p + coord_cartesian(ylim = ylim)
         }
 
-    }  else if (type == "balance") {
+        }  else if (type == "balance") {
 
         if (sameT0==FALSE) {
             stop("Requires treatment starts at the same time or specifying a subgroup.")
