@@ -18,6 +18,8 @@ tjbal <- function(
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
+    test = TRUE, ## test different sigmas
+    nsigma = 5,
     kbal.step = 1,
     print.baltable = TRUE, # print out table table
     vce = "jackknife", ## uncertainty estimates
@@ -47,6 +49,8 @@ tjbal.formula <- function(
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
+    test = TRUE, ## test different sigmas
+    nsigma = 5,
     maxnumdims = NULL,
     kbal.step = 1,
     print.baltable = TRUE, # print out table table
@@ -82,8 +86,10 @@ tjbal.formula <- function(
                           D = Dname, X = Xname,
                           X.avg.time = X.avg.time, index = index, trim.npre = trim.npre,
                           Y.match.time= Y.match.time, Y.match.npre = Y.match.npre,  
-                          demean = demean, kernel = kernel, sigma = sigma,
-                          maxnumdims = maxnumdims, kbal.step = kbal.step, print.baltable = print.baltable, 
+                          demean = demean, kernel = kernel, 
+                          sigma = sigma, test = test, nsigma = nsigma,
+                          maxnumdims = maxnumdims, kbal.step = kbal.step, 
+                          print.baltable = print.baltable, 
                           vce = vce, conf.lvl = conf.lvl, nsims = nsims, 
                           bootstrap = bootstrap, nboots = nboots, parallel = parallel, cores = cores, 
                           seed = seed)
@@ -108,6 +114,8 @@ tjbal.default <- function(
     demean = TRUE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     sigma=NULL,
+    test = TRUE, ## test different sigmas
+    nsigma = 5,
     maxnumdims = NULL,
     kbal.step = 1,
     print.baltable = TRUE, # print out table table
@@ -158,7 +166,7 @@ tjbal.default <- function(
 
 
     if (is.null(Y.match.time)==FALSE) {
-        if (Y.match.time == "none") {
+        if (Y.match.time[1] == "none") {
             Y.match.pre <- 0
             Y.match.time <- NULL
         }         
@@ -372,7 +380,8 @@ tjbal.default <- function(
             Y.match.time = Y.match.time, Y.match.npre = Y.match.npre, 
             Ttot = Ttot, unit = "id", 
             demean = demean, kernel = kernel, maxnumdims = maxnumdims,
-            sigma = sigma, kbal.step = kbal.step, print.baltable = print.baltable,
+            sigma = sigma, test = test, nsigma = nsigma,
+            kbal.step = kbal.step, print.baltable = print.baltable,
             vce = vce, conf.lvl = conf.lvl,
             nsims = nsims, parallel = parallel, cores = cores, seed = seed)         
     } else {        
@@ -380,7 +389,8 @@ tjbal.default <- function(
             Y.match.time = Y.match.time, Y.match.npre = Y.match.npre, 
             Ttot = Ttot, unit = "id", 
             demean = demean, kernel = kernel, maxnumdims = maxnumdims,
-            sigma = sigma, kbal.step = kbal.step, 
+            sigma = sigma, test = test, nsigma = nsigma,
+            kbal.step = kbal.step, 
             vce = vce, conf.lvl = conf.lvl,
             nsims = nsims, parallel = parallel, cores = cores, seed = seed)  
     } 
@@ -411,7 +421,9 @@ tjbal.multi <- function(
     demean = FALSE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     maxnumdims = NULL,    
-    sigma = NULL, ## tuning parameters    
+    sigma = NULL, ## tuning parameters   
+    test = TRUE, ## test different sigmas
+    nsigma = 5,
     kbal.step = 1,
     vce = "fixed.weights", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
@@ -459,12 +471,13 @@ tjbal.multi <- function(
     # naming
     rownames(sub.Ytr.adj) <-rownames(sub.ntr.pst) <- rownames(sub.ntr) <- rownames(sub.att.adj) <- time.adj
     colnames(sub.Ytr.adj) <-colnames(sub.ntr.pst) <- colnames(sub.ntr) <- colnames(sub.att.adj) <- T0.names
-    bias.ratios <- success <- rep(NA, length(T0.unique))    
+    bias.ratios <- rep(1, length(T0.unique)) 
+    success <- rep(0, length(T0.unique))    
 
     ## save subsets of the original data, K matrix, and variables to be balanced on
     bal.table.list <- matchvar.list <- K.list <- data.list <- vector("list", length = nT0)  
     ## save number of dimensions
-    ndims <- rep(NA, nT0) 
+    ndims <- rep(0, nT0) 
 
 
     cat("\nBalancing...\n")        
@@ -533,21 +546,19 @@ tjbal.multi <- function(
                 , file = NULL)
 
             ## if success
-            success[i] <- FALSE
-            bias.ratios[i] <- 1
             if (kbal.out$earlyfail==FALSE) {
                 success[i] <- TRUE
                 bias.ratios[i] <- c(kbal.out$biasbound.opt/kbal.out$biasbound.orig)
                 ndims[i] <- kbal.out$numdims
                 K.list[[i]] <- kbal.out$K # save kernel matrix
-                cat(paste0("bias.ratio = ",sprintf("%.4f",bias.ratios[i]),"; num.dims = ",ndims[i],"\n"))
                 ## weights
                 w.co <- kbal.out$w[1:Nco]/Nco                
                 w[1:Nco] <- w.co * (-1)                      
             } 
-        } else { # nothing to match
-            bias.ratios[i] <- 1
-        }        
+        } 
+        cat(paste0("bias.ratio = ",sprintf("%.4f",bias.ratios[i]),"; num.dims = ",ndims[i]))
+        if (ndims[i]==0) {cat(" (Fail)")}
+        cat("\n")                        
         att <- apply(data.oneT0[, Y.target] * w, 2, sum)
         sub.weights.co[,i] <- w.co
         
@@ -623,8 +634,6 @@ tjbal.multi <- function(
     group.stats <- cbind(T0 = T0.unique, time = Ttot[T0.unique], Ntr = T0.count, success, bias.ratios)
 
     
-
-
     #######################################
     ## Uncertainty Estimates via Jackknife
     #######################################    
@@ -640,9 +649,7 @@ tjbal.multi <- function(
             njacks <- Ntr
         } else {
             njacks <- nsims
-        }
-
-       
+        }       
 
         cat("\nJackknife...\n")
         drop.id.pos <- sample(1:Ntr, njacks, replace = FALSE)              
@@ -704,7 +711,7 @@ tjbal.multi <- function(
                         N <- Ntr + Nco
                         # weights: treated add up to 1; controls add up to -1; sum is zero
                         w.jack <-  rep(1/(Ntr-1), (N-1))
-                        if (is.null(matchvar) == TRUE) { # no reweighting                         
+                        if (is.null(matchvar) == TRUE | ndims == 0) { # no reweighting                         
                             w.jack[1:Nco] <- rep(-1/Nco, Nco)
                         } else {
                             tmp <- capture.output(
@@ -946,7 +953,9 @@ tjbal.single <- function(
     demean = FALSE, # take out pre-treatment unit mean
     kernel = FALSE, # kernel method
     maxnumdims = NULL,    
-    sigma = NULL, ## tuning parameters    
+    sigma = NULL, ## tuning parameters
+    test = TRUE, ## test different sigmas
+    nsigma = 5,
     kbal.step = 1,
     print.baltable = FALSE,
     vce = "fixed.weights", ## uncertainty via bootstrap
@@ -983,7 +992,7 @@ tjbal.single <- function(
             Y.match.time <- Ttot[max(1,(T0-Y.match.npre+1)):T0]
         }            
     } else {
-        if (is.null(Y.match.time.oneT0)==FALSE) {
+        if (is.null(Y.match.time)==FALSE) {
             Y.match.time <- intersect(Tpre, Y.match.time)                
         } else {
            Y.match.time <- Tpre                
@@ -1011,6 +1020,7 @@ tjbal.single <- function(
     } 
     matchvar <- c(Y.match, X)
 
+
     ## default weights
     w <- rep(NA, N)
     weights.tr <- rep(1/Ntr, Ntr) 
@@ -1023,32 +1033,106 @@ tjbal.single <- function(
     if (is.null(matchvar)==FALSE) { ## have something to balance on
 
         cat("\nSeek balance on:\n")
-        cat(paste(matchvar, collapse = ", "),"\n\nOptimization:\n")              
-
-        ## balancing
-        tmp <- capture.output(
-            kbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
-                treatment = data$treat, b=sigma, maxnumdims = maxnumdims,
+        cat(paste(matchvar, collapse = ", "),"\n")
+        bal.type <- "mbal"
+        
+        if (kernel == FALSE) { # mean balancing            
+            nsigma <- 1
+            cat("\nOptimization:\n")
+            tmp <- capture.output(
+            kbal.out.best <- suppressWarnings(kbal(allx = data[,matchvar],
+                treatment = data$treat, b=NULL, maxnumdims = maxnumdims,
                 linkernel = (1-kernel), incrementby = kbal.step,
                 printprogress = FALSE, sampledinpop = FALSE))
-            , file = NULL)
-
-        if (kbal.out$earlyfail == TRUE) { 
-            bias.ratio <- 1
-        } else {
-            bias.ratio <- c(kbal.out$biasbound.opt/kbal.out$biasbound.orig)            
+            , file = NULL) 
         }
 
+        if (kernel == TRUE) { ## kernel balancing
+            
+            ## tuning parameter
+            if (is.null(sigma)==TRUE){
+                if (test == TRUE) {
+                    sigma <- length(matchvar) * exp(seq(log(1),log(200),length.out = nsigma)) ## sigmas for testing
+                } else {
+                    sigma <- length(matchvar) * 1   
+                }
+            }
+            nsigma <- length(sigma)
+            test.bias.ratios <- rep(NA, nsigma)
+            if (nsigma == 1) {
+                cat("\nOptimization:\n")
+            } else {
+                cat("\nSearching for tunning parameter...\n")
+            }
+            
+            tmp <- capture.output(
+                kbal.out.best <- suppressWarnings(kbal(allx = data[,matchvar],
+                    treatment = data$treat, maxnumdims = maxnumdims,
+                    linkernel = TRUE, incrementby = kbal.step,
+                    printprogress = FALSE, sampledinpop = FALSE))
+                , file = NULL)
+            mdims <- kbal.out.best$numdims
+
+            
+            ## testing
+            sigma.best <- NULL
+            bal.type <- "mbal"
+            for (k in 1:nsigma) {
+                kbal.out <- NULL
+                tmp <- capture.output(
+                    kbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
+                        treatment = data$treat, b=sigma[k], maxnumdims = maxnumdims,
+                        linkernel = (1-kernel), incrementby = kbal.step,
+                        printprogress = FALSE, sampledinpop = FALSE))
+                    , file = NULL)
+                if (kbal.out$earlyfail == FALSE) { 
+                    test.bias.ratios[k] <- c(kbal.out$biasbound.opt/kbal.out$biasbound.orig)   
+                    max.dims <- ncol(kbal.out$dist.record) # maximum searched dimension         
+                } else {
+                    max.dims <- 0
+                }                
+                cat(paste0("sigma = ", sprintf("%.0f",sigma[k]),
+                    "; bias.ratio = ", sprintf("%.4f",test.bias.ratios[k]),
+                    "; num.dims = ",kbal.out$numdims,"\n"))
+                # kbal better than mbal, break loop
+                
+                if (max.dims >= mdims) {
+                    bal.type <- "kbal"
+                    sigma.best <- sigma[k]
+                    kbal.out.best <- kbal.out                    
+                    break
+                }
+            }
+
+
+            test.out <- matrix(NA, nrow = nsigma, ncol = 2)
+            colnames(test.out) <- c("sigma","bias.ratio")
+            test.out[,1] <- sigma
+            test.out[,2] <- test.bias.ratios
+            test.out <- test.out[which(is.na(test.out[,2])==FALSE),]
+
+        }       
+
+
         ## if success
-        if (kbal.out$earlyfail == FALSE) {
+        if (kbal.out.best$earlyfail == FALSE) {
             success <- TRUE
-            ndims <- kbal.out$numdims
-            K <- kbal.out$K # save kernel matrix
-            cat(paste0("bias.ratio = ", 
-                sprintf("%.4f",bias.ratio),"; num.dims = ",ndims,"\n"))
+            ndims <- kbal.out.best$numdims
+            K <- kbal.out.best$K # save kernel matrix
+            bias.ratio.best <- kbal.out.best$biasbound.opt/kbal.out.best$biasbound.orig
+            ## show info
+            if (kernel == FALSE) {
+                cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio.best),
+                    "; num.dims = ",ndims,"\n"))
+            } 
+            if (kernel == TRUE && test == FALSE) {
+                cat(paste0("sigma = ", sprintf("%.0f",sigma.best),
+                    "; bias.ratio = ", sprintf("%.4f",bias.ratio.best),
+                    "; num.dims = ",ndims,"\n"))
+            }
             ## weights
             weights.tr <- rep(1/Ntr, Ntr) # treated add up to 1; 
-            weights.co <- kbal.out$w[id.co]/Nco # controls add up to 1;
+            weights.co <- kbal.out.best$w[id.co]/Nco # controls add up to 1;
             w[id.tr] <- weights.tr  
             w[id.co] <- weights.co * (-1)  # controls add up to -1;
         } else {
@@ -1061,7 +1145,7 @@ tjbal.single <- function(
     # ATT
     att <- apply(data[, Y.target] * w, 2, sum)
     names(att) <- Ttot
-    att.avg <- mean(att[Y.target.pst])   
+    att.avg <- mean(att[(T0+1):TT])   
 
     
     ## treated and control data
@@ -1148,7 +1232,7 @@ tjbal.single <- function(
 
         
         ## Simulation
-        cat("Bootstrapping... ") 
+        cat("\nBootstrapping... \n") 
 
         one.boot <- function() {
             ## weights: treated add up to 1; controls add up to -1; sum is zero
@@ -1168,7 +1252,7 @@ tjbal.single <- function(
                 w.boot[1:Nco] <- kbal.boot$w[1:Nco]/Nco*(-1)  # controls add up to -1;   
             }
             att <- apply(data[sample.id, Y.target] * w.boot, 2, sum)
-            att.avg <- mean(att[Y.target.pst])
+            att.avg <- mean(att[(T0+1):TT])
             out <- list(att = att, att.avg = att.avg)
             return(out)            
         }
@@ -1229,7 +1313,7 @@ tjbal.single <- function(
 
     if (vce == "jackknife") {
 
-        cat("Jackknife... ")
+        cat("\nJackknife... \n")
         drop.id <- sample(id.tr, njacks, replace = FALSE)                 
         
         one.jack <- function(id) {
@@ -1252,7 +1336,7 @@ tjbal.single <- function(
             }                      
             ## ATT
             att <- apply(data[sample.id, Y.target] * w.jack, 2, sum)
-            att.avg <- mean(att[Y.target.pst])
+            att.avg <- mean(att[(T0+1):TT])
             out <- list(att = att, att.avg = att.avg)
             return(out)            
         }
@@ -1314,7 +1398,7 @@ tjbal.single <- function(
         ## z-score
         z.att <- att/se.att
         z.att.avg <- att.avg/se.att.avg
-
+        
         ## two-sided p-value
         pvalue.att <- (1 - pnorm(abs(z.att)))*2
         pvalue.att.avg <- (1 - pnorm(abs(z.att.avg)))*2
@@ -1335,7 +1419,7 @@ tjbal.single <- function(
 
         ## average effect
         est.att.avg <- t(as.matrix(c(att.avg, se.att.avg, z.att.avg, CI.att.avg, pvalue.att.avg)))
-        colnames(est.att.avg) <- c("ATT.avg", "S.E.", "z-score", "CI.lower", "CI.upper", "p.value")
+        colnames(est.att.avg) <- c("ATT", "S.E.", "z-score", "CI.lower", "CI.upper", "p.value")
 
         ## storage
         out.inference <- list(
@@ -1367,17 +1451,26 @@ tjbal.single <- function(
             Y.bar = Y.bar, 
             att = att,
             att.avg = att.avg,
-            ntreated = rep(Ntr,TT))
+            ntreated = rep(Ntr,TT)
+            )
     
     if (is.null(matchvar)==FALSE) {
         out <- c(out,
             list(success = success,
-            bias.ratio = bias.ratio,
-            ndims = ndims,
-            sigma = sigma))
+            bias.ratio = bias.ratio.best,
+            ndims = ndims,            
+            kbal.out = kbal.out.best))
+
         if (success==1) {
             out <- c(out, list(bal.table = bal.table))
-        }      
+        }
+        if (bal.type == "kbal") {
+            out <- c(out, list(sigma.best = sigma.best))
+            if (nsigma>1) {
+                out <- c(out, list(test.out = test.out))
+            }   
+        }
+          
     } 
     
     if (vce %in% c("fixed.weights","bootstrap","jackknife")) {
