@@ -748,7 +748,7 @@ tjbal.multi <- function(
                     cat("Parallel computing...") 
                     jack.out <- foreach(j=1:nid, 
                         .inorder = FALSE,
-                        .packages = c("KBAL")
+                        .packages = c("kbal")
                         ) %dopar% {
                         return(one.jack(data.list[[i]], K.list[[i]], drop.id.oneT0[j], ndims[i], 
                             matchvar))
@@ -1273,7 +1273,7 @@ tjbal.single <- function(
             cat("Parallel computing...") 
             boot.out <- foreach(j=1:nsims, 
                 .inorder = FALSE,                
-                .packages = c("KBAL")
+                .packages = c("kbal")
                 ) %dopar% {
                 return(one.boot())
             }
@@ -1357,7 +1357,7 @@ tjbal.single <- function(
             cat("Parallel computing...") 
             jack.out <- foreach(j=1:njacks, 
                 .inorder = FALSE,
-                .packages = c("KBAL")
+                .packages = c("kbal")
                 ) %dopar% {
                 return(one.jack(drop.id[j]))
             }

@@ -16,7 +16,7 @@ importFrom("ggplot2", "geom_boxplot", "geom_density", "geom_tile",
            "guide_legend", "margin", "guides","xlab","ylab","qplot",
            "element_rect", "element_line","element_text","element_blank", "unit")
 importFrom("plyr","ddply",".","numcolwise")
-importFrom("kbal","kbal")
+importFrom("kbal")
 
 
 ##importFrom(Rcpp, evalCpp)

@@ -9,4 +9,4 @@ NeedsCompilation: yes
 License: MIT
 Imports: ggplot2 (>= 2.1.0), plyr (>= 1.8.1), doParallel (>= 1.0.10), foreach (>= 1.4.3)
 Depends: R (>= 2.10)
-RoxygenNote: 6.0.1
+RoxygenNote: 6.1.1
