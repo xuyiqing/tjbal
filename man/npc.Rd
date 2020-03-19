@@ -2,7 +2,7 @@
 \docType{data}
 \alias{npc}
 \title{npc}
-\description{Returns to Office of China's National People's Congress.}
+\description{Data for returns to office of China's National People's Congress.}
 \format{dataframe}
 \keyword{datasets}
 \references{

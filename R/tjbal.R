@@ -16,17 +16,12 @@ tjbal <- function(
     Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
-    kernel = FALSE, # kernel method
+    estimator = "meanfirst",  # mean, meanfirst, kernel
     sigma=NULL,
-    test = TRUE, ## test different sigmas
-    nsigma = 5,
-    kbal.step = 1,
     print.baltable = TRUE, # print out table table
     vce = "jackknife", ## uncertainty estimates
     conf.lvl = 0.95, ## confidence interval
     nsims = NULL, ## number of bootstrap runs
-    bootstrap = NULL, ## from an older version
-    nboots = NULL,
     parallel = TRUE, ## parallel computing
     cores = 4,
     seed = 1234
@@ -47,18 +42,12 @@ tjbal.formula <- function(
     Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
-    kernel = FALSE, # kernel method
+    estimator = "meanfirst",  # mean, meanfirst, kernel
     sigma=NULL,
-    test = TRUE, ## test different sigmas
-    nsigma = 5,
-    maxnumdims = NULL,
-    kbal.step = 1,
     print.baltable = TRUE, # print out table table
     vce = "jackknife", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
     nsims = NULL, ## number of bootstrap runs
-    bootstrap = NULL, ## from an older version
-    nboots = NULL, ## same as above
     parallel = TRUE, ## parallel computing
     cores = 4,
     seed = 1234
@@ -86,12 +75,11 @@ tjbal.formula <- function(
                           D = Dname, X = Xname,
                           X.avg.time = X.avg.time, index = index, trim.npre = trim.npre,
                           Y.match.time= Y.match.time, Y.match.npre = Y.match.npre,  
-                          demean = demean, kernel = kernel, 
-                          sigma = sigma, test = test, nsigma = nsigma,
-                          maxnumdims = maxnumdims, kbal.step = kbal.step, 
+                          demean = demean, estimator = estimator, 
+                          sigma = sigma, 
                           print.baltable = print.baltable, 
                           vce = vce, conf.lvl = conf.lvl, nsims = nsims, 
-                          bootstrap = bootstrap, nboots = nboots, parallel = parallel, cores = cores, 
+                          parallel = parallel, cores = cores, 
                           seed = seed)
     
     out$call <- match.call()
@@ -112,18 +100,12 @@ tjbal.default <- function(
     Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
-    kernel = FALSE, # kernel method
+    estimator = "meanfirst",  # mean, meanfirst, kernel
     sigma=NULL,
-    test = TRUE, ## test different sigmas
-    nsigma = 5,
-    maxnumdims = NULL,
-    kbal.step = 1,
     print.baltable = TRUE, # print out table table
     vce = "jackknife", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
     nsims = NULL, ## number of bootstrap runs
-    bootstrap = NULL, ## from an older version
-    nboots = NULL, ## same as above
     parallel = TRUE, ## parallel computing
     cores = 4,
     seed = 1234
@@ -152,24 +134,19 @@ tjbal.default <- function(
     if (vce == "jack") {vce <- "jackknife"}
     if (vce == "fixed") {vce <- "fixed.weights"}
 
-    if (is.null(bootstrap)==FALSE) {
-        if (bootstrap==TRUE) {
-            vce = "bootstrap"
-        }
-    }
-
-    if (is.null(nsims)==TRUE & is.null(nboots)==FALSE) {
-        nsims <- nboots
-    } else {
-        nsims <- 500
-    }
-
+    
 
     if (is.null(Y.match.time)==FALSE) {
         if (Y.match.time[1] == "none") {
             Y.match.pre <- 0
             Y.match.time <- NULL
         }         
+    }
+
+    if (is.null(sigma)==FALSE) {
+        if (is.numeric(sigma)==FALSE) {
+            stop("\"sigma\" needs to be numeric; the default is 2.")
+        }
     }
 
 
@@ -264,7 +241,7 @@ tjbal.default <- function(
 
     ## check the number of treated units
     if (Ntr <= 5) {
-        cat("Too few treated unit(s). Uncertainty estimates not provided.")
+        cat("Too few treated unit(s). Uncertainty estimates not provided.\n")
         vce <- "none"
     }    
 
@@ -379,23 +356,18 @@ tjbal.default <- function(
         bal.out <- tjbal.single(data = data.wide, Y = Yname, D = "treat", X = Xname,
             Y.match.time = Y.match.time, Y.match.npre = Y.match.npre, 
             Ttot = Ttot, unit = "id", 
-            demean = demean, kernel = kernel, maxnumdims = maxnumdims,
-            sigma = sigma, test = test, nsigma = nsigma,
-            kbal.step = kbal.step, print.baltable = print.baltable,
+            demean = demean, estimator = estimator, sigma = sigma, 
+            print.baltable = print.baltable,
             vce = vce, conf.lvl = conf.lvl,
             nsims = nsims, parallel = parallel, cores = cores, seed = seed)         
     } else {        
         bal.out <- tjbal.multi(data = data.wide, Y = Yname, D = "treat", X = Xname,
             Y.match.time = Y.match.time, Y.match.npre = Y.match.npre, 
             Ttot = Ttot, unit = "id", 
-            demean = demean, kernel = kernel, maxnumdims = maxnumdims,
-            sigma = sigma, test = test, nsigma = nsigma,
-            kbal.step = kbal.step, 
+            demean = demean, estimator = estimator, sigma = sigma, 
             vce = vce, conf.lvl = conf.lvl,
             nsims = nsims, parallel = parallel, cores = cores, seed = seed)  
     } 
-    
- 
 
     out <- c(list(sameT0 = sameT0, index = index, Yname = Yname), bal.out)
     out$call <- match.call()
@@ -419,15 +391,11 @@ tjbal.multi <- function(
     Ttot,
     unit,
     demean = FALSE, # take out pre-treatment unit mean
-    kernel = FALSE, # kernel method
-    maxnumdims = NULL,    
+    estimator = "mean",
     sigma = NULL, ## tuning parameters   
-    test = TRUE, ## test different sigmas
-    nsigma = 5,
-    kbal.step = 1,
     vce = "fixed.weights", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
-    nsims = 500, ## number of bootstrap runs
+    nsims = 200, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
     cores = 4,
     seed = 1234  
@@ -471,102 +439,64 @@ tjbal.multi <- function(
     # naming
     rownames(sub.Ytr.adj) <-rownames(sub.ntr.pst) <- rownames(sub.ntr) <- rownames(sub.att.adj) <- time.adj
     colnames(sub.Ytr.adj) <-colnames(sub.ntr.pst) <- colnames(sub.ntr) <- colnames(sub.att.adj) <- T0.names
-    bias.ratios <- rep(1, length(T0.unique)) 
-    success <- rep(0, length(T0.unique))    
+     
 
     ## save subsets of the original data, K matrix, and variables to be balanced on
-    bal.table.list <- matchvar.list <- K.list <- data.list <- vector("list", length = nT0)  
-    ## save number of dimensions
-    ndims <- rep(0, nT0) 
+    constraint.list <- bal.table.list <- matchvar.list <- K.list <- data.list <- vector("list", length = nT0)  
+    ## other storage
+    success <- sigmas <- ndims <- rep(0, nT0) 
+    bias.ratios <- rep(1, nT0) 
+    kernels <- rep(NA, nT0)
+    
 
-
-    cat("\nBalancing...\n")        
+    cat("Balancing...\n")        
     for (i in 1:nT0) {
 
         T0 <- T0.unique[i]
-        id.tr.one <- which(T0.all == T0)        
-        Tpre <- Ttot[1:T0]
-        Tpst <- Ttot[(T0+1):TT]
-        Ntr.one <- length(id.tr.one)
-        N.one <- Ntr.one + Nco
-        Y.match.time.oneT0 <- Y.match.time
-
-        if (is.null(Y.match.npre)==FALSE) {
-            if (Y.match.npre == 0) {
-                Y.match.time.oneT0 <- NULL
-            } else {
-                Y.match.time.oneT0 <- Ttot[max(1,(T0-Y.match.npre+1)):T0]
-            }            
-        } else {
-            if (is.null(Y.match.time.oneT0)==FALSE) {
-                Y.match.time.oneT0 <- intersect(Tpre, Y.match.time.oneT0)                
-            } else {
-                Y.match.time.oneT0 <- Tpre                
-            }
-        }   
-        
-        ## remove other treated 
-        data.oneT0 <- data[c(id.co,id.tr.one),]
-        
-        if (demean == TRUE) { 
-            Y.dm.var <- paste0(Y,".dm",Ttot)
-            Ypre.mean <- apply(data.oneT0[, paste0(Y, Tpre), drop = FALSE], 1, mean) # N*1
-            outcome.dm <- data.oneT0[, paste0(Y, Ttot), drop = FALSE] - matrix(Ypre.mean, N.one, TT) # N * TT
-            colnames(outcome.dm) <- Y.dm.var
-            data.oneT0 <- cbind.data.frame(data.oneT0, outcome.dm) 
-            Y.match <- paste0(Y,".dm",Y.match.time.oneT0)
-            Y.target <- paste0(Y,".dm",Ttot)
-            Y.target.pst <- paste0(Y,".dm",Tpst)
-        } else {            
-            Y.match <- paste0(Y, Y.match.time.oneT0)
-            Y.target <- paste0(Y, Ttot)
-            Y.target.pst <- paste0(Y, Tpst)
-        }
-        if (is.null(Y.match.time.oneT0)==TRUE) { # do not match on pre-treatment Y
-            Y.match <- NULL
-        } 
-        matchvar <- c(Y.match, X)
-        if (is.null(matchvar)==FALSE) {matchvar.list[[i]] <- matchvar}
-        # Save this subsample in data.list           
-        data.list[[i]] <- data.oneT0
-
-        ## default weights
-        w <- rep(1/Ntr.one, N.one)
-        w.co <- rep(1/Nco, Nco) 
-        w[1:Nco] <- w.co * (-1)
-
-        ## trajectory balancing
         cat(paste0("Subgroup T0 = ",T0,": "))
-        if (is.null(matchvar)==FALSE) { ## have something to balance on
-            tmp <- capture.output(
-                kbal.out <- suppressWarnings(kbal(allx = data.oneT0[,matchvar],
-                    treatment = data.oneT0$treat, b=sigma, maxnumdims = maxnumdims,
-                    linkernel = (1-kernel), incrementby = kbal.step,
-                    printprogress = FALSE, sampledinpop = FALSE))         
-                , file = NULL)
+        id.tr.one <- which(T0.all == T0)    
 
-            ## if success
-            if (kbal.out$earlyfail==FALSE) {
-                success[i] <- TRUE
-                bias.ratios[i] <- c(kbal.out$biasbound.opt/kbal.out$biasbound.orig)
-                ndims[i] <- kbal.out$numdims
-                K.list[[i]] <- kbal.out$K # save kernel matrix
-                ## weights
-                w.co <- kbal.out$w[1:Nco]/Nco                
-                w[1:Nco] <- w.co * (-1)                      
-            } 
-        } 
-        cat(paste0("bias.ratio = ",sprintf("%.4f",bias.ratios[i]),"; num.dims = ",ndims[i]))
-        if (ndims[i]==0) {cat(" (Fail)")}
-        cat("\n")                        
-        att <- apply(data.oneT0[, Y.target] * w, 2, sum)
-        sub.weights.co[,i] <- w.co
+        out <- tjbal.core(data = data, Y = Y, X = X, Y.match.time = Y.match.time, 
+            Y.match.npre = Y.match.npre, Ttot = Ttot, T0 = T0, id.tr = id.tr.one, id.co = id.co,
+            demean = demean, estimator = estimator, sigma = sigma, 
+            info = FALSE) 
+
+        # saved results
+        att <- out$att
+        Y.var <- out$Y.var
+        w <- out$w
+        matchvar <- out$matchvar
+        Y.target <- out$Y.target
+        Y.target.pst <- out$Y.target.pst
+        data.list[[i]] <- out$data.wide
+        if (is.null(matchvar)==FALSE) {
+            matchvar.list[[i]] <- matchvar
+            success[i] <- out$success
+            if (success[i] == TRUE) {
+                bias.ratios[i] <- out$bias.ratio
+                ndims[i] <- out$ndims
+                if (out$bal.type == "kbal") {
+                    K.list[[i]] <- out$kbal.out$K           
+                    sigmas[i] <- out$b                    
+                    kernels[i] <- 1 
+                    if (estimator == "meanfirst") {
+                        constraint.list[[i]] <- out$constriant
+                    }                   
+                } else {
+                    kernels[i] <- 0
+                }                
+            }
+        }
+
+        # cat(paste0("bias.ratio = ",sprintf("%.4f",bias.ratios[i]),"; num.dims = ",ndims[i]))
+        # if (ndims[i]==0) {cat(" (Fail)")}
+        # cat("\n")                        
         
-        
+        sub.weights.co[,i] <- out$weights.co
         sub.att[,i] <- att
-        sub.att.avg[i] <- mean(att[Y.target.pst])
-        sub.Ytr.avg[,i] <- apply(data[id.tr.one, Y.var, drop = FALSE], 2, mean, na.rm=TRUE)
-        sub.Yct.avg[,i] <- sub.Ytr.avg[,i] - att       
+        sub.att.avg[i] <- out$att.avg
+        sub.Ytr.avg[,i] <- out$Y.bar[,1]
+        sub.Yct.avg[,i] <- out$Y.bar[,2]     
        
 
         ## save ATT (realigned based on T0)        
@@ -577,38 +507,9 @@ tjbal.multi <- function(
         sub.Ytr.adj[fill.start:fill.end, i] <- sub.Ytr.avg[,i]
 
         ## balance table
-        if (is.null(matchvar)==FALSE) {
-
-            weighted.sd <- function(vec, w) {sqrt(sum(w * (vec - weighted.mean(vec,w))^2))}
-            if (Ntr.one>1) {
-                # treated
-                mean.tr <- apply(data.oneT0[(Nco+1):N.one, matchvar, drop = FALSE], 2, mean) 
-                sd.tr <- apply(data.oneT0[(Nco+1):N.one, matchvar, drop = FALSE], 2, sd)
-                # control
-                mean.co.pre <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, mean) 
-                sd.co.pre <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, sd)
-                # weighted control 
-                mean.co.pst <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, weighted.mean, w.co) 
-                sd.co.pst <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, weighted.sd, w.co) 
-                # normalize by SD of the treated 
-                diff.pre <- (mean.tr - mean.co.pre)/sd.tr
-                diff.pst <- (mean.tr - mean.co.pst)/sd.tr                
-                bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, sd.tr, sd.co.pre,  sd.co.pst, diff.pre, diff.pst)
-            } else {
-                # treated
-                mean.tr <- apply(data.oneT0[(Nco+1):N.one, matchvar, drop = FALSE], 2, mean) 
-                # control
-                mean.co.pre <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, mean)
-                # weighted control 
-                mean.co.pst <- apply(data.oneT0[1:Nco, matchvar, drop = FALSE], 2, weighted.mean, w.co) 
-                # difference in means
-                diff.pre <- (mean.tr - mean.co.pre)/abs(mean.tr)
-                diff.pst <- (mean.tr - mean.co.pst)/abs(mean.tr)
-                bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, diff.pre, diff.pst)
-            }
-            bal.table.list[[i]] <- bal.table
-        }
-       
+        if (is.null(matchvar)==FALSE) {          
+            bal.table.list[[i]] <- out$bal.table
+        }       
     }
     ntreated <- rowSums(sub.ntr) # how the number of units changes over adjusted time
     att <- rowSums(sub.att.adj * sub.ntr)/ntreated
@@ -631,7 +532,8 @@ tjbal.multi <- function(
     names(weights.co) <- units[id.co]
 
     ## group statistics
-    group.stats <- cbind(T0 = T0.unique, time = Ttot[T0.unique], Ntr = T0.count, success, bias.ratios)
+    group.stats <- cbind(T0 = T0.unique, time = Ttot[T0.unique], Ntr = T0.count, 
+        success = success, sigma = floor(sigmas), bias.ratio = bias.ratios)
 
     
     #######################################
@@ -644,6 +546,8 @@ tjbal.multi <- function(
 
     if (vce == "jackknife") {
 
+        #cat("ndims:",ndims,"\n")
+
         # number of jackknife runs
         if (nsims > Ntr) {
             njacks <- Ntr
@@ -652,7 +556,7 @@ tjbal.multi <- function(
         }       
 
         cat("\nJackknife...\n")
-        drop.id.pos <- sample(1:Ntr, njacks, replace = FALSE)              
+        drop.id.pos <- sample(1:Ntr, njacks, replace = FALSE)
         drop.id <- id.tr[drop.id.pos]
         drop.id.T0s <- T0.tr[drop.id.pos]   
         drop.id.list <- split(drop.id, drop.id.T0s) # put drop id into different T0 groups
@@ -678,8 +582,9 @@ tjbal.multi <- function(
 
         k <- 1
         for (i in 1:nT0) {
-            cat("Dropping units from Subgroup T0 =",T0,"\n")
+            
             T0 <- T0.unique[i]
+            cat("Dropping units from Subgroup T0 =",T0,"\n")
             drop.id.oneT0 <- drop.id.list[[as.character(T0)]]
 
             # this matrix count the number of treated units for each T0
@@ -704,7 +609,7 @@ tjbal.multi <- function(
                 k <- k + 1
             } else { # more than one unit in this group 
 
-                one.jack <- function(data, K, id, ndims, matchvar) {
+                one.jack <- function(data, K, id, ndims, matchvar, sigma, kernel, constraint) {
                         N <- nrow(data)
                         Ntr <- N - Nco
                         id <- which(data$id == id) # translate original id to new id
@@ -712,18 +617,23 @@ tjbal.multi <- function(
                         # weights: treated add up to 1; controls add up to -1; sum is zero
                         w.jack <-  rep(1/(Ntr-1), (N-1))
                         if (is.null(matchvar) == TRUE | ndims == 0) { # no reweighting                         
-                            w.jack[1:Nco] <- rep(-1/Nco, Nco)
+                            w.jack[(Ntr+1):N] <- rep(-1/Nco, Nco)
                         } else {
-                            tmp <- capture.output(
-                                kbal.jack <- suppressWarnings(kbal(allx = data[-id, matchvar], treatment = data[-id, D],
-                                    linkernel = (1-kernel), incrementby = kbal.step, printprogress = FALSE,                    
-                                    K = K[-id,], minnumdims = max(0,ndims-5), maxnumdims = ndims,
+                            tmp <- capture.output(                               
+                                kbal.jack <- suppressWarnings(kbal(
+                                    allx = data[-id, matchvar], 
+                                    K = K[-id,],
+                                    constraint = constraint[-id,], 
+                                    treatment = data[-id, D],
+                                    linkernel = (1-kernel), b = sigma, 
+                                    printprogress = FALSE,                    
+                                    minnumdims = max(0,ndims-5), maxnumdims = ndims,
                                     sampledinpop=FALSE))
                             , file = NULL)                
-                            w.jack[1:Nco] <- kbal.jack$w[1:Nco]/Nco*(-1)  # controls add up to -1;   
+                            w.jack[Ntr:(N-1)] <- kbal.jack$w[Ntr:(N-1)]/Nco*(-1)  # controls add up to -1;   
                         }                      
                         att <- apply(data[-id, Y.target] * w.jack, 2, sum)
-                        att.avg <- mean(att[Y.target.pst])
+                        att.avg <- mean(att[(T0+1):TT])
                         out <- list(att = att, att.avg = att.avg)
                         return(out)            
                 }
@@ -750,22 +660,24 @@ tjbal.multi <- function(
                         .inorder = FALSE,
                         .packages = c("kbal")
                         ) %dopar% {
-                        return(one.jack(data.list[[i]], K.list[[i]], drop.id.oneT0[j], ndims[i], 
-                            matchvar))
+                        return(one.jack(data = data.list[[i]], K = K.list[[i]], 
+                            id = drop.id.oneT0[j], ndims = ndims[i], 
+                            matchvar = matchvar.list[[i]], sigma = sigmas[i], 
+                            kernel = kernels[i], constraint = constraint.list[[i]]))
                     }
                     
-                        ## save results
+                    ## save results
                     for (j in 1:nid) { 
                         sub.att.oneT0[,j] <- jack.out[[j]]$att
                         sub.att.avg.oneT0[j] <- jack.out[[j]]$att.avg 
-                            # att.adj for this run (realigned based on T0)        
+                        # att.adj for this run (realigned based on T0)        
                         fill.start <- T0.max-T0+1
                         fill.end <- fill.start + TT -1 
                         sub.att.adj.tmp[fill.start:fill.end, i] <- jack.out[[j]]$att
-                            # att.adj and att.avg for this run
+                        # att.adj and att.avg for this run
                         att.jack[,k] <- rowSums(sub.att.adj.tmp * sub.ntr.tmp)/rowSums(sub.ntr.tmp)
                         att.avg.jack[k] <- sum(sub.att.adj.tmp * sub.ntr.pst.tmp)/sum(sub.ntr.pst.tmp)
-                            # counter
+                        # counter
                         k <- k + 1                
                     }
                 } else { ## single core
@@ -773,7 +685,9 @@ tjbal.multi <- function(
 
                         jack <- one.jack(data = data.list[[i]], 
                             K = K.list[[i]], id = drop.id.oneT0[j], 
-                            ndims = ndims[i], matchvar = matchvar)
+                            ndims = ndims[i], matchvar = matchvar.list[[i]], 
+                            sigma = sigmas[i], kernel = kernels[i], 
+                            constraint = constraint.list[[i]])
 
                         sub.att.oneT0[,j] <- jack$att
                         sub.att.avg.oneT0[j] <- jack$att.avg 
@@ -787,7 +701,7 @@ tjbal.multi <- function(
                         # counter
                         k <- k + 1 
                         ## report progress
-                        if (kernel == FALSE) {if (j%%50==0)  {cat(".")}} 
+                        if (j%%50==0)  {cat(".")} 
                     }  # end of single core loop
                 }  # end of T0 with more than one treated unit
 
@@ -951,12 +865,10 @@ tjbal.single <- function(
     Ttot,
     unit,
     demean = FALSE, # take out pre-treatment unit mean
-    kernel = FALSE, # kernel method
-    maxnumdims = NULL,    
+    estimator = "mean",
     sigma = NULL, ## tuning parameters
     test = TRUE, ## test different sigmas
     nsigma = 5,
-    kbal.step = 1,
     print.baltable = FALSE,
     vce = "fixed.weights", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
@@ -985,216 +897,38 @@ tjbal.single <- function(
         }
     } 
 
-    if (is.null(Y.match.npre)==FALSE) {
-        if (Y.match.npre == 0) {
-            Y.match.time <- NULL
-        } else {
-            Y.match.time <- Ttot[max(1,(T0-Y.match.npre+1)):T0]
-        }            
-    } else {
-        if (is.null(Y.match.time)==FALSE) {
-            Y.match.time <- intersect(Tpre, Y.match.time)                
-        } else {
-           Y.match.time <- Tpre                
-        }
-    }           
-
-
-    if (demean == TRUE) { 
-        Y.dm.var <- paste0(Y,".dm",Ttot)
-        Ypre.mean <- apply(data[, paste0(Y, Tpre), drop = FALSE], 1, mean) # N*1
-        outcome.dm <- data[, paste0(Y, Ttot), drop = FALSE] - matrix(Ypre.mean, N, TT) # N * TT
-        colnames(outcome.dm) <- Y.dm.var
-        data <- cbind.data.frame(data, outcome.dm) 
-
-        Y.match <- paste0(Y,".dm",Y.match.time)
-        Y.target <- paste0(Y,".dm",Ttot)
-        Y.target.pst <- paste0(Y,".dm",Tpst)
-    } else {
-        Y.match <- paste0(Y, Y.match.time)
-        Y.target <- paste0(Y, Ttot)
-        Y.target.pst <- paste0(Y, Tpst)
+    out <- tjbal.core(data = data, Y = Y, X = X, Y.match.time = Y.match.time, 
+        Y.match.npre = Y.match.npre, Ttot = Ttot, T0 = T0, id.tr = id.tr, id.co = id.co,
+        demean = demean, estimator = estimator, sigma = sigma, 
+        info = TRUE) 
+   
+    # saved results
+    att <- out$att
+    att.avg <- out$att.avg  
+    Y.var <- out$Y.var
+    Y.bar <- out$Y.bar
+    w <- out$w
+    weights.co <- out$weights.co
+    matchvar <- out$matchvar
+    Y.target <- out$Y.target
+    Y.target.pst <- out$Y.target.pst
+    ndims <- out$ndims
+    K <- out$kbal.out$K
+    constraint <- out$constraint
+    if (out$bal.type == "mbal") {
+        kernel <- 0
+    } else if (out$bal.type == "kbal") {
+        kernel <- 1
     }
-    if (is.null(Y.match.time) == TRUE) { # do not match on pre-treatment Y
-        Y.match <- NULL
-    } 
-    matchvar <- c(Y.match, X)
+    data <- out$data.wide
+    id.tr <- 1:Ntr
+    id.co <- (Ntr + 1): N
 
-
-    ## default weights
-    w <- rep(NA, N)
-    weights.tr <- rep(1/Ntr, Ntr) 
-    weights.co <- rep(1/Nco, Nco)
-    names(weights.co) <- data[id.co, unit]
-    w[id.tr] <- weights.tr  
-    w[id.co] <- weights.co * (-1)  # controls add up to -1;
-
-    ## trajectory balancing
-    if (is.null(matchvar)==FALSE) { ## have something to balance on
-
-        cat("\nSeek balance on:\n")
-        cat(paste(matchvar, collapse = ", "),"\n")
-        bal.type <- "mbal"
-        
-        if (kernel == FALSE) { # mean balancing            
-            nsigma <- 1
-            cat("\nOptimization:\n")
-            tmp <- capture.output(
-            kbal.out.best <- suppressWarnings(kbal(allx = data[,matchvar],
-                treatment = data$treat, b=NULL, maxnumdims = maxnumdims,
-                linkernel = (1-kernel), incrementby = kbal.step,
-                printprogress = FALSE, sampledinpop = FALSE))
-            , file = NULL) 
-        }
-
-        if (kernel == TRUE) { ## kernel balancing
-            
-            ## tuning parameter
-            if (is.null(sigma)==TRUE){
-                if (test == TRUE) {
-                    sigma <- length(matchvar) * exp(seq(log(1),log(200),length.out = nsigma)) ## sigmas for testing
-                } else {
-                    sigma <- length(matchvar) * 1   
-                }
-            }
-            nsigma <- length(sigma)
-            test.bias.ratios <- rep(NA, nsigma)
-            if (nsigma == 1) {
-                cat("\nOptimization:\n")
-            } else {
-                cat("\nSearching for tunning parameter...\n")
-            }
-            
-            tmp <- capture.output(
-                kbal.out.best <- suppressWarnings(kbal(allx = data[,matchvar],
-                    treatment = data$treat, maxnumdims = maxnumdims,
-                    linkernel = TRUE, incrementby = kbal.step,
-                    printprogress = FALSE, sampledinpop = FALSE))
-                , file = NULL)
-            mdims <- kbal.out.best$numdims
-
-            
-            ## testing
-            sigma.best <- NULL
-            bal.type <- "mbal"
-            for (k in 1:nsigma) {
-                kbal.out <- NULL
-                tmp <- capture.output(
-                    kbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
-                        treatment = data$treat, b=sigma[k], maxnumdims = maxnumdims,
-                        linkernel = (1-kernel), incrementby = kbal.step,
-                        printprogress = FALSE, sampledinpop = FALSE))
-                    , file = NULL)
-                if (kbal.out$earlyfail == FALSE) { 
-                    test.bias.ratios[k] <- c(kbal.out$biasbound.opt/kbal.out$biasbound.orig)   
-                    max.dims <- ncol(kbal.out$dist.record) # maximum searched dimension         
-                } else {
-                    max.dims <- 0
-                }                
-                cat(paste0("sigma = ", sprintf("%.0f",sigma[k]),
-                    "; bias.ratio = ", sprintf("%.4f",test.bias.ratios[k]),
-                    "; num.dims = ",kbal.out$numdims,"\n"))
-                # kbal better than mbal, break loop
-                
-                if (max.dims >= mdims) {
-                    bal.type <- "kbal"
-                    sigma.best <- sigma[k]
-                    kbal.out.best <- kbal.out                    
-                    break
-                }
-            }
-
-
-            test.out <- matrix(NA, nrow = nsigma, ncol = 2)
-            colnames(test.out) <- c("sigma","bias.ratio")
-            test.out[,1] <- sigma
-            test.out[,2] <- test.bias.ratios
-            test.out <- test.out[which(is.na(test.out[,2])==FALSE),]
-
-        }       
-
-
-        ## if success
-        if (kbal.out.best$earlyfail == FALSE) {
-            success <- TRUE
-            ndims <- kbal.out.best$numdims
-            K <- kbal.out.best$K # save kernel matrix
-            bias.ratio.best <- kbal.out.best$biasbound.opt/kbal.out.best$biasbound.orig
-            ## show info
-            if (kernel == FALSE) {
-                cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio.best),
-                    "; num.dims = ",ndims,"\n"))
-            } 
-            if (kernel == TRUE && test == FALSE) {
-                cat(paste0("sigma = ", sprintf("%.0f",sigma.best),
-                    "; bias.ratio = ", sprintf("%.4f",bias.ratio.best),
-                    "; num.dims = ",ndims,"\n"))
-            }
-            ## weights
-            weights.tr <- rep(1/Ntr, Ntr) # treated add up to 1; 
-            weights.co <- kbal.out.best$w[id.co]/Nco # controls add up to 1;
-            w[id.tr] <- weights.tr  
-            w[id.co] <- weights.co * (-1)  # controls add up to -1;
-        } else {
-            success <- FALSE
-            cat("\nSolution not found. Equal weights are being used.\n")            
-        }
-
-    }
-
-    # ATT
-    att <- apply(data[, Y.target] * w, 2, sum)
-    names(att) <- Ttot
-    att.avg <- mean(att[(T0+1):TT])   
-
-    
-    ## treated and control data
-    Y.var  <- paste0(Y, Ttot)
-    Y.tr.bar <- apply(data[id.tr, Y.var], 2, mean, na.rm=TRUE)
-    Y.co.bar <- apply(data[id.co, Y.var], 2, mean, na.rm=TRUE)
-    Y.ct.bar <- Y.tr.bar - att
-    Y.bar <- cbind(Y.tr.bar,Y.ct.bar, Y.co.bar)  
-
-    
-    #####################
-    ## balance table
-    #####################
-    
-    if (is.null(matchvar)==FALSE) {
-        
-        weighted.sd <- function(vec, w) {sqrt(sum(w * (vec - weighted.mean(vec,w))^2))}
-        if (Ntr>1) {
-            # treated
-            mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
-            sd.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, sd)
-            # control
-            mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean) 
-            sd.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, sd)
-            # weighted control 
-            mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
-            sd.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.sd, weights.co) 
-            # normalize by SD of the treated 
-            diff.pre <- (mean.tr - mean.co.pre)/sd.tr
-            diff.pst <- (mean.tr - mean.co.pst)/sd.tr                
-            bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, sd.tr, sd.co.pre,  sd.co.pst, diff.pre, diff.pst)
-        } else {
-            # treated
-            mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
-            # control
-            mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean)
-            # weighted control 
-            mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
-            # difference in means
-            diff.pre <- (mean.tr - mean.co.pre)/abs(mean.tr)
-            diff.pst <- (mean.tr - mean.co.pst)/abs(mean.tr)
-            bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, diff.pre, diff.pst)
-        }        
-        if (print.baltable == TRUE) {
-            cat("\nBalance Table\n")
-            print(round(bal.table, 4))   
-        }               
-    }
-
+    if (print.baltable == TRUE && is.null(matchvar)==FALSE) {
+        cat("\nBalance Table\n")
+        print(round(out$bal.table, 4))   
+    }     
+       
 
     ###########################
     ## Uncertainty Estimates
@@ -1210,7 +944,7 @@ tjbal.single <- function(
         att.sims<-matrix(0,TT,nsims)
         att.avg.sims<-matrix(0,nsims,1)          
         for (j in 1:nsims) { 
-            sample.id <- c(sample(id.tr,Ntr, replace = TRUE),
+            sample.id <- c(sample(id.tr, Ntr, replace = TRUE),
                 sample(id.co, Nco, replace = TRUE))
             w.boot <- w[sample.id]
             w.boot[1:Ntr] <- w.boot[1:Ntr]/sum(w.boot[1:Ntr]) # add up to 1
@@ -1242,12 +976,14 @@ tjbal.single <- function(
                 w.boot[1:Nco] <- rep(-1/Nco, Nco)
             } else {
                 data.tmp <- data[sample.id, ]
-                K.boot <- K[sample.id, ]
                 tmp <- capture.output(                                
-                    kbal.boot <- suppressWarnings(kbal(allx = data.tmp[, matchvar], treatment = data.tmp[, D],
-                        linkernel = (1-kernel), incrementby = kbal.step, 
+                    kbal.boot <- suppressWarnings(kbal(allx = data.tmp[, matchvar], 
+                        treatment = data.tmp[, D],
+                        K = K[sample.id, ],
+                        constraint = constraint[sample.id,], 
+                        linkernel = (1-kernel),  
                         printprogress = FALSE, sampledinpop = FALSE,
-                        K = K.boot, minnumdims = max(0,ndims-5), maxnumdims = ndims))
+                        minnumdims = max(0,ndims-5), maxnumdims = ndims))
                 , file = NULL)                
                 w.boot[1:Nco] <- kbal.boot$w[1:Nco]/Nco*(-1)  # controls add up to -1;   
             }
@@ -1326,11 +1062,15 @@ tjbal.single <- function(
                 w.jack[1:Nco] <- rep(-1/Nco, Nco)
             } else {
                 data.tmp <- data[sample.id, ]
-                K.jack <- K[sample.id, ]
                 tmp <- capture.output(
-                    kbal.jack <- suppressWarnings(kbal(allx = data.tmp[, matchvar], treatment = data.tmp[, D],
-                    linkernel = (1-kernel), incrementby = kbal.step, printprogress = FALSE,                    
-                        K = K.jack, minnumdims = max(0,ndims-5), maxnumdims = ndims))            
+                    kbal.jack <- suppressWarnings(kbal(allx = data.tmp[, matchvar], 
+                        K = K[sample.id, ],
+                        constraint = constraint[sample.id,], 
+                        treatment = data.tmp[, D],
+                        linkernel = (1-kernel), 
+                        printprogress = FALSE,                    
+                        minnumdims = max(0,ndims-5), 
+                        maxnumdims = ndims))            
                 , file = NULL)    
                 w.jack[1:Nco] <- kbal.jack$w[1:Nco]/Nco*(-1)  # controls add up to -1;   
             }                      
@@ -1371,13 +1111,7 @@ tjbal.single <- function(
             for (j in 1:njacks) { 
                 jack <- one.jack(drop.id[j]) 
                 att.sims[,j]<-jack$att
-                att.avg.sims[j,]<-jack$att.avg                
-                ## report progress
-                if (kernel == FALSE) {
-                    if (j%%50==0)  {cat(".")}
-                } else {
-                    cat(j,"\n")
-                } 
+                att.avg.sims[j,]<-jack$att.avg               
             }  
         }
         ## end of bootstrapping
@@ -1435,11 +1169,10 @@ tjbal.single <- function(
     ## Save Results
     #####################
 
-    out <- list(data.wide = data,
+    out <- c(out, list(
             id.tr = id.tr,
             id.co = id.co,
             Y.var = Y.var,
-            weights.co = weights.co, # Nco * 1 vector
             Ttot = Ttot,
             Tpre = Tpre,
             Tpst = Tpst,
@@ -1447,31 +1180,8 @@ tjbal.single <- function(
             N = N,
             Ntr = Ntr,
             Nco = Nco,                
-            matchvar = matchvar,
-            Y.bar = Y.bar, 
-            att = att,
-            att.avg = att.avg,
             ntreated = rep(Ntr,TT)
-            )
-    
-    if (is.null(matchvar)==FALSE) {
-        out <- c(out,
-            list(success = success,
-            bias.ratio = bias.ratio.best,
-            ndims = ndims,            
-            kbal.out = kbal.out.best))
-
-        if (success==1) {
-            out <- c(out, list(bal.table = bal.table))
-        }
-        if (bal.type == "kbal") {
-            out <- c(out, list(sigma.best = sigma.best))
-            if (nsigma>1) {
-                out <- c(out, list(test.out = test.out))
-            }   
-        }
-          
-    } 
+            ))    
     
     if (vce %in% c("fixed.weights","bootstrap","jackknife")) {
         out <- c(out, out.inference)
@@ -1480,7 +1190,278 @@ tjbal.single <- function(
 
 }
 
+###################################################
+#### tjbal core function
+###################################################
 
+
+tjbal.core <- function(
+    data, ## data in wide form
+    Y,
+    X,
+    Y.match.time = NULL,
+    Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
+    Ttot,
+    T0,
+    id.tr,
+    id.co,
+    demean = FALSE, # take out pre-treatment unit mean
+    estimator,
+    sigma = NULL, ## tuning parameters
+    info ## show information
+    ) { 
+
+
+    TT <- length(Ttot)
+    Ntr <- length(id.tr)
+    Nco <- length(id.co)
+    N <- Ntr + Nco 
+    Tpre <- Ttot[1:T0]
+    Tpst <- Ttot[(T0+1):TT] 
+
+    if (is.null(Y.match.npre)==FALSE) {
+        if (Y.match.npre == 0) {
+            Y.match.time <- NULL
+        } else {
+            Y.match.time <- Ttot[max(1,(T0-Y.match.npre+1)):T0]
+        }            
+    } else {
+        if (is.null(Y.match.time)==FALSE) {
+            Y.match.time <- intersect(Tpre, Y.match.time)                
+        } else {
+            Y.match.time <- Tpre                
+        }
+    } 
+
+
+
+    ## remove other treated (in case of multiple timing) 
+    data <- data[c(id.tr, id.co),]
+    id.tr <- 1:Ntr
+    id.co <- (Ntr + 1): N           
+
+
+    if (demean == TRUE) { 
+        Y.dm.var <- paste0(Y,".dm",Ttot)
+        Ypre.mean <- apply(data[, paste0(Y, Tpre), drop = FALSE], 1, mean) # N*1
+        outcome.dm <- data[, paste0(Y, Ttot), drop = FALSE] - matrix(Ypre.mean, N, TT) # N * TT
+        colnames(outcome.dm) <- Y.dm.var
+        data <- cbind.data.frame(data, outcome.dm) 
+        Y.match <- paste0(Y,".dm",Y.match.time)
+        Y.target <- paste0(Y,".dm",Ttot)
+        Y.target.pst <- paste0(Y,".dm",Tpst)
+    } else {
+        Y.match <- paste0(Y, Y.match.time)
+        Y.target <- paste0(Y, Ttot)
+        Y.target.pst <- paste0(Y, Tpst)
+    }
+    if (is.null(Y.match.time) == TRUE) { # do not match on pre-treatment Y
+        Y.match <- NULL
+    } 
+    matchvar <- c(Y.match, X)
+
+    ## tuning parameter
+    if (is.null(sigma)==TRUE){
+        sigma <- 2 ## sigmas for testing
+    } 
+    b <- length(matchvar) * sigma
+
+
+    ## default weights (control first, then treated)
+    weights.tr <- rep(1/Ntr, Ntr) 
+    weights.co <- rep(1/Nco, Nco)
+    w <- c(weights.tr, weights.co*(-1))
+    att <- apply(data[, Y.target] * w, 2, sum); names(att) <- Ttot
+    att.avg <- mean(att[(T0+1):TT])
+    pre.mae.org <- pre.mae <- mean(abs(att[1:T0]))
+    
+    ## trajectory balancing
+    if (is.null(matchvar)==FALSE) { ## have something to balance on
+
+        if (info == TRUE) {
+            cat("Seek balance on:\n")
+            cat(paste(matchvar, collapse = ", "),"\n")
+            cat("\nOptimization:\n")
+        }
+
+        # mean balancing
+        if (estimator == "mean") {            
+            bal.type <- "mbal"
+            tmp <- capture.output(
+                kbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
+                    treatment = data$treat, b=NULL, 
+                    linkernel = TRUE, 
+                    printprogress = FALSE, sampledinpop = FALSE))
+                , file = NULL) 
+
+        } # end of mean balancing
+
+        # kernel balancing
+        if (estimator == "kernel") {
+            bal.type <- "kbal"
+            tmp <- capture.output(
+                kbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
+                    treatment = data$treat, b=b, 
+                    linkernel = FALSE, 
+                    printprogress = FALSE, sampledinpop = FALSE))
+                , file = NULL)
+        } # end of kernel balancing
+
+        # mean first
+        if (estimator == "meanfirst") {
+            tmp <- capture.output(
+                mbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
+                    treatment = data$treat, b=NULL, 
+                    linkernel = TRUE, 
+                    printprogress = FALSE, sampledinpop = FALSE))
+                , file = NULL) 
+            if (is.null(mbal.out$numdims) == FALSE) {
+                mbal.ndims <- mbal.out$numdims # mbal dimensions   
+                mbal.svd.keep <- mbal.out$svdK$u[, 1:mbal.ndims] # mbal constraints
+                mbal.bias.ratio <- mbal.out$biasbound.opt/mbal.out$biasbound.orig
+                success <- TRUE                  
+            } else {
+                success <- FALSE                  
+            }
+            # output mbal result        
+            if (success == FALSE) {  # mbal failed, no need to do kbal
+                kbal.out <- mbal.out                                     
+            } else {
+                tmp <- capture.output(
+                    kbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
+                        treatment = data$treat, b=b, 
+                        constraint = mbal.svd.keep,
+                        printprogress = FALSE, 
+                        sampledinpop = FALSE))
+                    , file = NULL)
+                if (is.null(kbal.out$numdims) == FALSE) {
+                    bal.type <- "kbal"
+                } else {
+                    bal.type <- "mbal" 
+                    kbal.out <- mbal.out
+                } 
+            }
+        } # end of mean first
+
+        if (is.null(kbal.out$numdims) == FALSE) {
+            success <- TRUE
+        }
+
+        ## if success
+        if (success == TRUE) {
+            weights.tr <- rep(1/Ntr, Ntr) # treated add up to 1; 
+            weights.co <- kbal.out$w[id.co]/Nco # controls add up to 1;
+            w <- c(weights.tr, weights.co*(-1))
+            # reporting
+            ndims <- kbal.out$numdims
+            bias.ratio <- kbal.out$biasbound.opt/kbal.out$biasbound.orig
+            if (bal.type == "mbal") {
+                cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
+                    "; num.dims = ",ndims," (mbal)\n"))
+            }            
+            if (bal.type == "kbal" && estimator == "kernel") {
+                cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
+                    "; num.dims = ",ndims," (kbal)\n"))                
+            }
+            if (bal.type == "kbal" && estimator == "meanfirst") {
+                cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
+                    "; num.dims = ",mbal.ndims," + ",ndims," (mbal + kbal)\n"))
+            }            
+        } else {
+            cat("\nSolution not found. Equal weights being used.\n")
+        }
+    } else {
+        bal.type <- "none"    
+    }
+
+    # ATT
+    att <- apply(data[, Y.target] * w, 2, sum)
+    names(att) <- Ttot
+    att.avg <- mean(att[(T0+1):TT])   
+
+    
+    ## treated and control data
+    Y.var  <- paste0(Y, Ttot)
+    Y.tr.bar <- apply(data[id.tr, Y.var], 2, mean, na.rm=TRUE)
+    Y.co.bar <- apply(data[id.co, Y.var], 2, mean, na.rm=TRUE)
+    Y.ct.bar <- Y.tr.bar - att
+    Y.bar <- cbind(Y.tr.bar,Y.ct.bar, Y.co.bar)  
+
+    
+    #####################
+    ## balance table
+    #####################
+    
+    if (is.null(matchvar)==FALSE) {
+        
+        weighted.sd <- function(vec, w) {sqrt(sum(w * (vec - weighted.mean(vec,w))^2))}
+        if (Ntr>1) {
+            # treated
+            mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
+            sd.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, sd)
+            # control
+            mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean) 
+            sd.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, sd)
+            # weighted control 
+            mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
+            sd.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.sd, weights.co) 
+            # normalize by SD of the treated 
+            diff.pre <- (mean.tr - mean.co.pre)/sd.tr
+            diff.pst <- (mean.tr - mean.co.pst)/sd.tr                
+            bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, sd.tr, sd.co.pre,  sd.co.pst, diff.pre, diff.pst)
+        } else {
+            # treated
+            mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
+            # control
+            mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean)
+            # weighted control 
+            mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
+            # difference in means
+            diff.pre <- (mean.tr - mean.co.pre)/abs(mean.tr)
+            diff.pst <- (mean.tr - mean.co.pst)/abs(mean.tr)
+            bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, diff.pre, diff.pst)
+        }         
+    }
+
+    
+    #####################
+    ## Save Results
+    #####################
+
+    out <- list(data.wide = data, # treated units first, then controls
+            w = w, # N * 1 vector
+            weights.co = weights.co, # Nco * 1 vector
+            matchvar = matchvar,
+            Y.var = Y.var,
+            Y.target = Y.target,
+            Y.target.pst = Y.target.pst,
+            Y.bar = Y.bar, 
+            att = att,
+            att.avg = att.avg,
+            ntreated = rep(Ntr,TT),
+            bal.type = bal.type
+            )
+    
+    if (is.null(matchvar)==FALSE) {
+        out <- c(out, list(success = success))
+        if (success == TRUE) {
+            out <- c(out,
+            list(bias.ratio = bias.ratio,
+                ndims = ndims,            
+                kbal.out = kbal.out,
+                bal.table = bal.table,                
+                b = b))
+            if (estimator == "meanfirst") {
+                out <- c(out, list(constraint = mbal.svd.keep))
+            }
+            if (bal.type == "kbal") {
+                out <- c(out, list(b = b))
+            }  
+        } 
+
+    }             
+    return(out)
+}
 
     
 
@@ -1528,6 +1509,9 @@ plot.tjbal <- function(x,
     ylab = NULL,
     count = TRUE,
     legendOff = FALSE,
+    legend.pos = "bottom",
+    legend.ncol = NULL,
+    legend.labs = NULL,
     main = NULL,
     raw = "none",
     stat = "mean",
@@ -1611,6 +1595,9 @@ plot.tjbal <- function(x,
             raw <- "none" 
         }
         if (x$sameT0==FALSE && is.null(subgroup)==TRUE) {
+            if (raw %in% c("band","all")) {
+                cat("Control units not shown due to different treatment timing among treated.")
+            }
             raw <- "none"
         }      
     }
@@ -1651,7 +1638,7 @@ plot.tjbal <- function(x,
     } else {
         angle <- 0
         x.v <- 0
-        x.h <- 0
+        x.h <- 0.5
     }
 
     ## color of axes
@@ -1676,27 +1663,27 @@ plot.tjbal <- function(x,
         if (is.numeric(cex.lab)==FALSE) {
             stop("\"cex.lab\" is not numeric.")
         }
-        cex.lab <- 15 * cex.lab
+        cex.lab <- 13 * cex.lab
     } else {
-        cex.lab <- 15
+        cex.lab <- 13
     }
     ## axis number
     if (is.null(cex.axis)==FALSE) {
         if (is.numeric(cex.axis)==FALSE) {
             stop("\"cex.axis\" is not numeric.")
         }
-        cex.axis <- 15 * cex.axis
+        cex.axis <- 12 * cex.axis
     }  else {
-        cex.axis <- 15
+        cex.axis <- 12
     }
     ## legend
     if (is.null(cex.legend)==FALSE) {
         if (is.numeric(cex.legend)==FALSE) {
             stop("\"cex.legend\" is not numeric.")
         }
-        cex.legend <- 15 * cex.legend
+        cex.legend <- 12 * cex.legend
     }  else {
-        cex.legend <- 15
+        cex.legend <- 12
     }
     ## text
     if (is.null(cex.text)==FALSE) {
@@ -1719,6 +1706,7 @@ plot.tjbal <- function(x,
     time <- x$Ttot
     TT <- length(x$Ttot)
     Nco <- x$Nco
+    
 
     if (is.null(subgroup)==TRUE) {
         att <- x$att
@@ -1797,14 +1785,22 @@ plot.tjbal <- function(x,
         nT <- length(show)
         time.label <- time[show]
         T.b <- 1:length(show)
+        hist.adjust <- (max(time[show])-min(time[show]))/(nT-1) # adjust for the width of the histograms
     }
-
 
     ## legend on/off
     if (legendOff == TRUE) {
         legend.pos <- "none"
-    } else {
-        legend.pos <- "bottom"
+    }
+
+    if (is.null(legend.ncol)==FALSE) {
+        if (is.numeric(legend.ncol)==FALSE) {
+            stop("\n\"legend.ncol\" needs to be numeric.")
+        }
+    } 
+
+    if (is.null(legend.labs)==FALSE) {
+        legend.labs <- as.character(legend.labs)
     }
 
     ## confidence intervals
@@ -1886,8 +1882,8 @@ plot.tjbal <- function(x,
 
         ## histogram
         if (count == TRUE) {
-            data[,"xmin"] <- data[,"time"] - 0.2
-            data[,"xmax"] <- data[,"time"] + 0.2
+            data[,"xmin"] <- data[,"time"] - 0.2 * hist.adjust
+            data[,"xmax"] <- data[,"time"] + 0.2 * hist.adjust
             data[,"ymin"] <- rep(rect.min, nrow(data))
             data[,"ymax"] <- rect.min + (data$n.Treated/Ntr) * 0.8 * rect.length
             xx <- range(data$time)
@@ -1949,7 +1945,6 @@ plot.tjbal <- function(x,
         } else {
             maintext <- "Treated and Counterfactual Averages"
         }
-
         
 
         if (raw == "none") {
@@ -1960,7 +1955,7 @@ plot.tjbal <- function(x,
                 "type" = c(rep("tr",nT),rep("co",nT)),
                 "n.Treated" = rep(ntreated[show],2)) 
 
-                # height of the histogram
+            # height of the histogram
             max.count.pos <- time[min(intersect(show,which(time > time.bf)))]
             if (length(ylim) != 0) {
                 rect.length <- (ylim[2] - ylim[1]) / 5
@@ -1970,250 +1965,308 @@ plot.tjbal <- function(x,
                 rect.min <- min(data[,"outcome"]) - rect.length
             } 
 
-                
-                ## theme 
-                p <- ggplot(data)
-                if (theme.bw == TRUE) {
-                  p <- p + theme_bw()
-                }
-                p <- p + xlab(xlab) +  ylab(ylab) +
-                geom_vline(xintercept=time.bf,colour=line.color,size = 2) 
+            ## theme 
+            p <- ggplot(data)
+            if (theme.bw == TRUE) {
+              p <- p + theme_bw()
+            }
+            p <- p + xlab(xlab) +  ylab(ylab) +
+            geom_vline(xintercept=time.bf,colour=line.color,size = 2) 
 
-                ## histogram
-                if (count == TRUE) {
-                    data[,"xmin"] <- data[,"time"] - 0.2
-                    data[,"xmax"] <- data[,"time"] + 0.2
-                    data[,"ymin"] <- rep(rect.min, nrow(data))
-                    data[,"ymax"] <- rect.min + (data$n.Treated/Ntr) * 0.8 * rect.length
-                    xx <- range(data$time)
-                    p <- p + geom_rect(data = data[which(data$type == "tr"),], aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), 
-                        fill = "grey70", colour = "grey69", alpha = 0.4, size = 0.2)
-                    p <- p + annotate("text", x = max.count.pos + 0.00 * (xx[2]-xx[1]), 
-                        y = max(data$ymax) + 0.2 * rect.length, 
-                        label = paste("Ntr =",Ntr), size = cex.text * 0.8, hjust = 0.5)
-                }
+            ## histogram
+            if (count == TRUE) {
+                data[,"xmin"] <- data[,"time"] - 0.2 * hist.adjust
+                data[,"xmax"] <- data[,"time"] + 0.2 * hist.adjust
+                data[,"ymin"] <- rep(rect.min, nrow(data))
+                data[,"ymax"] <- rect.min + (data$n.Treated/Ntr) * 0.8 * rect.length
+                xx <- range(data$time)
+                p <- p + geom_rect(data = data[which(data$type == "tr"),], aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), 
+                    fill = "grey70", colour = "grey69", alpha = 0.4, size = 0.2)
+                p <- p + annotate("text", x = max.count.pos + 0.00 * (xx[2]-xx[1]), 
+                    y = max(data$ymax) + 0.2 * rect.length, 
+                    label = paste("Ntr =",Ntr), size = cex.text * 0.8, hjust = 0.5)
+            }
                 
-                ## main
-                p <- p + geom_line(data = data, aes(time, outcome,
-                   colour = type,
-                   size = type,
-                   linetype = type))
+            ## main
+            p <- p + geom_line(data = data, aes(time, outcome,colour = type,size = type,linetype = type))
 
              
-                ## legend
-                set.limits = c("tr","co")
+            ## legend
+            if (is.null(legend.labs)==FALSE) {
+                if (length(legend.labs)!=2) {
+                    stop("\n\"legend.labs\" needs to be of length 2.")
+                }
+                set.labels <- legend.labs
+            } else {
                 if (Ntr == 1) {
                     set.labels = c("Treated", "Estimated Y(0)")
                 } else {
                     set.labels = c("Treated Average", "Estimated Y(0) Average")
                 }
-                set.colors = c("black","steelblue")
-                set.linetypes = c("solid","longdash")
-                set.linewidth = rep(line.width[1],2)
-                p <- p + scale_colour_manual(limits = set.limits,
-                 labels = set.labels,
-                 values =set.colors) +
-                scale_linetype_manual(limits = set.limits,
-                  labels = set.labels,
-                  values = set.linetypes) +
-                scale_size_manual(limits = set.limits,
-                  labels = set.labels,
-                  values = set.linewidth) +
-                guides(linetype = guide_legend(title=NULL, nrow=1),
-                   colour = guide_legend(title=NULL, nrow=1),
-                   size = guide_legend(title=NULL, nrow=1)) 
+            }
+            set.limits = c("tr","co")            
+            set.colors = c("black","steelblue")
+            set.linetypes = c("solid","longdash")
+            set.linewidth = rep(line.width[1],2)
+            if (is.null(legend.ncol)==TRUE) {
+                legend.ncol <- 2
+            }
+                
 
-                if (!is.numeric(time.label)) {
-                    p <- p + 
-                    scale_x_continuous(expand = c(0, 0), breaks = show[T.b], labels = time.label[T.b])
-                }
+        } else if  (raw == "band") {
 
-            } else if  (raw == "band") {
-
-                if (trim == FALSE) {
-                    Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
-                    Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
-                    tr.band.label <- "Treated 5-95% Quantiles"
-                    co.band.label <- "Controls 5-95% Quantiles"
-                } else {
-                    Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
-                    Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
-                    tr.band.label <- "Treated 5-95% Quantiles"
-                    co.band.label <- paste0("Heavily Weighted Controls 5-95% Quantiles (",floor(trim.wtot*100),"% weights)")
-                }
+            if (trim == FALSE) {
+                Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                tr.band.label <- "Treated 5-95% Quantiles"
+                co.band.label <- "Controls 5-95% Quantiles"
+            } else {
+                Y.tr.band <- t(apply(Y.tr, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                Y.co.band <- t(apply(Y.co, 2, quantile, prob=c(0.05,0.95),na.rm=TRUE))
+                tr.band.label <- "Treated 5-95% Quantiles"
+                co.band.label <- paste0("Heavily Weighted Controls 5-95% Quantiles (",floor(trim.wtot*100),"% weights)")
+            }
 
                 
-                data <- cbind.data.frame("time" = rep(time[show],2),
-                   "outcome" = c(Yb[show,1], Yb[show,2]),"type" = c(rep("tr",nT),rep("co",nT)))
+            data <- cbind.data.frame(
+                "time" = rep(time[show],2),
+                "outcome" = c(Yb[show,1], Yb[show,2]),
+                "type" = c(rep("tr",nT),rep("co",nT)),
+                "n.Treated" = rep(ntreated[show],2))
 
-                if (Ntr <= 10) {
-                    data.band <- cbind.data.frame(time, Y.co.band)[show,]
-                    colnames(data.band) <- c("time","co.lower","co.upper")
+            
+            if (Ntr <= 10) {
+                data.band <- cbind.data.frame(time, Y.co.band)[show,]
+                colnames(data.band) <- c("time","co.lower","co.upper")
+                range.max <- max(data.band[,c("co.upper")])
+                range.min <- min(data.band[,c("co.lower")])
+            } else {
+                data.band <- cbind.data.frame(time, Y.tr.band, Y.co.band)[show,]
+                colnames(data.band) <- c("time","tr.lower","tr.upper","co.lower","co.upper")
+                range.max <- max(data.band[,c("co.upper","tr.upper")])
+                range.min <- min(data.band[,c("co.lower","tr.lower")])
+            }
+
+
+            # height of the histogram
+            max.count.pos <- time[min(intersect(show,which(time > time.bf)))]
+            if (length(ylim) != 0) {
+                rect.length <- (ylim[2] - ylim[1]) / 5
+                rect.min <- ylim[1]
+            } else {
+                rect.length <- (range.max - range.min)/4
+                rect.min <- range.min - rect.length
+            } 
+
+            ## theme 
+            p <- ggplot(data)
+            if (theme.bw == TRUE) {
+              p <- p + theme_bw()
+            }
+            p <- p + xlab(xlab) +  ylab(ylab) +
+            geom_vline(xintercept=time.bf,colour=line.color,size = 2)
+
+            ## histogram
+            if (count == TRUE) {
+                data[,"xmin"] <- data[,"time"] - 0.2 * hist.adjust
+                data[,"xmax"] <- data[,"time"] + 0.2 * hist.adjust
+                data[,"ymin"] <- rep(rect.min, nrow(data))
+                data[,"ymax"] <- rect.min + (data$n.Treated/Ntr) * 0.8 * rect.length
+                xx <- range(data$time)
+                p <- p + geom_rect(data = data[which(data$type == "tr"),], aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), 
+                    fill = "grey70", colour = "grey69", alpha = 0.4, size = 0.2)
+                p <- p + annotate("text", x = max.count.pos + 0.00 * (xx[2]-xx[1]), 
+                    y = max(data$ymax) + 0.2 * rect.length, 
+                    label = paste("Ntr =",Ntr), size = cex.text * 0.8, hjust = 0.5)
+            }
+
+            ## main
+            p <- p + geom_line(aes(time, outcome,colour = type,size = type,linetype = type))
+            ## band
+            if (Ntr <= 10) {
+                p <- p + geom_ribbon(data = data.band,
+                    aes(ymin = co.lower, ymax = co.upper, x=time),
+                    alpha = 0.15, fill = "steelblue")
+                set.limits = c("tr","co","co.band")
+                # legend
+                if (is.null(legend.labs)==FALSE) {
+                    if (length(legend.labs)!=3) {
+                        stop("\n\"legend.labs\" needs to be of length 3.")
+                    }
+                    set.labels <- legend.labs
                 } else {
-                    data.band <- cbind.data.frame(time, Y.tr.band, Y.co.band)[show,]
-                    colnames(data.band) <- c("time","tr.lower","tr.upper","co.lower","co.upper")
-                }
-                
-                ## theme 
-                p <- ggplot(data)
-                if (theme.bw == TRUE) {
-                  p <- p + theme_bw()
-                }
-                p <- p + xlab(xlab) +  ylab(ylab) +
-                geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
-                #annotate("rect", xmin= time.bf, xmax= Inf,
-                # ymin=-Inf, ymax=Inf, alpha = .3) +
-                theme(legend.position = legend.pos,
-                  axis.text.x = element_text(angle = angle, hjust=x.h, vjust=x.v),
-                  plot.title = element_text(size=20,
-                    hjust = 0.5,
-                    face="bold",
-                    margin = margin(10, 0, 10, 0)))
-                        ## main
-                p <- p + geom_line(aes(time, outcome,
-                   colour = type,
-                   size = type,
-                   linetype = type))
-                ## band
-                if (Ntr <= 10) {
-                    p <- p + geom_ribbon(data = data.band,
-                        aes(ymin = co.lower, ymax = co.upper, x=time),
-                        alpha = 0.15, fill = "steelblue")
-                    set.limits = c("tr","co","co.band")
                     if (Ntr == 1) {
                         set.labels = c("Treated", "Estimated Y(0)",co.band.label)
                     } else {
                         set.labels = c("Treated Average", "Estimated Y(0)",co.band.label)
                     }
-                    set.colors = c("black","steelblue","#4682B470")
-                    set.linetypes = c("solid","longdash","solid")
-                    set.linewidth = c(rep(line.width[1],2),4)                    
-                } else {
-                    p <- p + geom_ribbon(data = data.band,
-                        aes(ymin = co.lower, ymax = co.upper, x=time),
-                        alpha = 0.15, fill = "steelblue") +
-                            geom_ribbon(data = data.band,
-                               aes(ymin = tr.lower, ymax = tr.upper, x=time),
-                               alpha = 0.15, fill = "black")
-                    set.limits = c("tr","co","tr.band","co.band")
-                    set.labels = c("Treated Average", "Estimated Y(0) Average",
-                     tr.band.label, co.band.label)
-                    set.colors = c("black","steelblue","#77777750","#4682B470")
-                    set.linetypes = c("solid","longdash","solid","solid")
-                    set.linewidth = c(rep(line.width[1],2),4,4)        
-                }                
-
-                p <- p + scale_colour_manual(limits = set.limits,
-                 labels = set.labels,
-                 values =set.colors) +
-                scale_linetype_manual(limits = set.limits,
-                  labels = set.labels,
-                  values = set.linetypes) +
-                scale_size_manual(limits = set.limits,
-                  labels = set.labels,
-                  values = set.linewidth) +
-                guides(linetype = guide_legend(title=NULL, nrow=2, byrow=TRUE),
-                   colour = guide_legend(title=NULL, nrow=2, byrow=TRUE),
-                   size = guide_legend(title=NULL, nrow=2, byrow=TRUE)) 
-
-                if (!is.numeric(time.label)) {
-                    p <- p + 
-                    scale_x_continuous(expand = c(0, 0), breaks = show[T.b], labels = time.label[T.b])
+                }                 
+                set.colors = c("black","steelblue","#4682B470")
+                set.linetypes = c("solid","longdash","solid")
+                set.linewidth = c(rep(line.width[1],2),4)  
+                # legend columns
+                if (is.null(legend.ncol)==TRUE) {
+                    legend.ncol <- 1
                 }
 
-            } else if (raw == "all") { ## plot all the raw data
 
-                if (Ntr == 1) {
-                    data <- cbind.data.frame("time" = rep(time[show],(2 + Nco)),
-                     "outcome" = c(Yb[show,1],Yb[show,2], c(t(Y.co[,show]))),
-                     "type" = c(rep("tr",nT), rep("co",nT), rep("raw.co",(Nco * nT))),
-                     "id" = c(rep("tr",nT), rep("co",nT), rep(id.co, each = nT))) 
+            } else {
+                p <- p + geom_ribbon(data = data.band,
+                    aes(ymin = co.lower, ymax = co.upper, x=time),
+                    alpha = 0.15, fill = "steelblue") +
+                geom_ribbon(data = data.band,
+                   aes(ymin = tr.lower, ymax = tr.upper, x=time),
+                   alpha = 0.15, fill = "black")
+                # legend
+                if (is.null(legend.labs)==FALSE) {
+                    if (length(legend.labs)!=4) {
+                        stop("\n\"legend.labs\" needs to be of length 4.")
+                    }
+                    set.labels <- legend.labs
                 } else {
-                    data <- cbind.data.frame("time" = rep(time[show],(2 + N)),
-                     "outcome" = c(Yb[show,1],Yb[show,2],c(t(Y.tr[,show])),c(t(Y.co[,show]))),
-                     "type" = c(rep("tr",nT), rep("co",nT), rep("raw.tr",(Ntr * nT)), rep("raw.co",(Nco * nT))),
-                     "id" = c(rep("tr",nT), rep("co",nT), rep(c(id.tr,id.co), each = nT))) 
-                }
+                    set.labels <- c("Treated Average", "Estimated Y(0) Average", tr.band.label, co.band.label)
+                } 
+                set.limits = c("tr","co","tr.band","co.band")
+                set.colors = c("black","steelblue","#77777750","#4682B470")
+                set.linetypes = c("solid","longdash","solid","solid")
+                set.linewidth = c(rep(line.width[1],2),4,4)
+                # legend columns
+                if (is.null(legend.ncol)==TRUE) {
+                    legend.ncol <- 2
+                }        
+            } 
 
-                
-                ## theme
-                p <- ggplot(data)
-                if (theme.bw == TRUE) {
-                  p <- p + theme_bw()
-                }
-                p <- p + xlab(xlab) +  ylab(ylab) +
-                        geom_vline(xintercept=time.bf,colour=line.color,size = 2) +
-                        #annotate("rect", xmin= time.bf, xmax= Inf,
-                        #   ymin=-Inf, ymax=Inf, alpha = .3) +
-                        theme(legend.position = legend.pos,
-                          axis.text.x = element_text(angle = angle, hjust=x.h, vjust=x.v),
-                          plot.title = element_text(size=20,
-                            hjust = 0.5,
-                            face="bold",
-                            margin = margin(10, 0, 10, 0))) 
-                
-                ## main
-                p <- p + geom_line(aes(time, outcome, colour = type,size = type,
-                   linetype = type, group = id))
+                           
+          
 
-                ## legend
-                if (Nco >= 50) {
-                    co.color = "#4682B430"
-                } else if (Nco >= 20) {
-                    co.color = "#4682B450"
-                } else {
-                    co.color = "#4682B470"
-                }     
-                if (Ntr == 1) {
-                    set.limits = c("tr","co","raw.co")
-                    set.labels = c("Treated","Estimated Treated Y(0)",co.label) 
-                    set.colors = c("black","steelblue",co.color)
-                    set.linetypes = c("solid","longdash","solid")
-                    set.linewidth = line.width[c(1,1,2)]
-                } else {
-                    set.limits = c("tr","co","raw.tr","raw.co")
-                    set.labels = c("Treated Average",
-                     "Estimated Y(0) Average",
-                     "Treated", co.label)
-                    set.colors = c("black","steelblue","#77777750",co.color)
-                    set.linetypes = c("solid","longdash","solid","solid")
-                    set.linewidth = rep(line.width,each=2)
-                }
-                
-                p <- p + scale_colour_manual(limits = set.limits,
-                   labels = set.labels,
-                   values =set.colors) +
-                scale_linetype_manual(limits = set.limits,
-                  labels = set.labels,
-                  values = set.linetypes) +
-                scale_size_manual(limits = set.limits,
-                  labels = set.labels,
-                  values = set.linewidth)
-                if (Ntr ==1) {
-                    p <- p + 
-                    guides(linetype = guide_legend(title=NULL, nrow=1),
-                       colour = guide_legend(title=NULL, ncol=3),
-                       size = guide_legend(title=NULL, ncol=3)) 
-                } else {
-                    p <- p + 
-                    guides(linetype = guide_legend(title=NULL, nrow=2, byrow=TRUE),
-                       colour = guide_legend(title=NULL, nrow=2, byrow=TRUE),
-                       size = guide_legend(title=NULL, nrow=2, byrow=TRUE)) 
-                }                
+        } else if (raw == "all") { ## plot all the raw data
 
-                if (!is.numeric(time.label)) {
-                    p <- p + 
-                    scale_x_continuous(expand = c(0, 0), breaks = show[T.b], labels = time.label[T.b])
-                }
+            if (Ntr == 1) {
+                data <- cbind.data.frame("time" = rep(time[show],(2 + Nco)),
+                   "outcome" = c(Yb[show,1],Yb[show,2], c(t(Y.co[,show]))),
+                   "type" = c(rep("tr",nT), rep("co",nT), rep("raw.co",(Nco * nT))),
+                   "id" = c(rep("tr",nT), rep("co",nT), rep(id.co, each = nT)),
+                   "n.Treated" = rep(ntreated[show],(2 + Nco)))                
+            } else {
+                data <- cbind.data.frame("time" = rep(time[show],(2 + N)),
+                   "outcome" = c(Yb[show,1],Yb[show,2],c(t(Y.tr[,show])),c(t(Y.co[,show]))),
+                   "type" = c(rep("tr",nT), rep("co",nT), rep("raw.tr",(Ntr * nT)), rep("raw.co",(Nco * nT))),
+                   "id" = c(rep("tr",nT), rep("co",nT), rep(c(id.tr,id.co), each = nT)),
+                   "n.Treated" = rep(ntreated[show],(2+N))) 
             }
 
-            # key width in legend
-            p <- p + theme(legend.key.width = unit(2.5,"line"))   
+            # height of the histogram
+            range.max <- max(data[,c("outcome")])
+            range.min <- min(data[,c("outcome")]) 
+            max.count.pos <- time[min(intersect(show,which(time > time.bf)))]
+            if (length(ylim) != 0) {
+                rect.length <- (ylim[2] - ylim[1]) / 5
+                rect.min <- ylim[1]
+            } else {
+                rect.length <- (range.max - range.min)/4
+                rect.min <- range.min - rect.length
+            } 
+
+                
+            ## theme
+            p <- ggplot(data)
+            if (theme.bw == TRUE) {
+              p <- p + theme_bw()
+            }
+            p <- p + xlab(xlab) +  ylab(ylab) + geom_vline(xintercept=time.bf,colour=line.color,size = 2) 
+
+            ## histogram
+            if (count == TRUE) {
+                data[,"xmin"] <- data[,"time"] - 0.2 * hist.adjust
+                data[,"xmax"] <- data[,"time"] + 0.2 * hist.adjust
+                data[,"ymin"] <- rep(rect.min, nrow(data))
+                data[,"ymax"] <- rect.min + (data$n.Treated/Ntr) * 0.8 * rect.length
+                xx <- range(data$time)
+                p <- p + geom_rect(data = data[which(data$type == "tr"),], aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), 
+                    fill = "grey70", colour = "grey69", alpha = 0.4, size = 0.2)
+                p <- p + annotate("text", x = max.count.pos + 0.00 * (xx[2]-xx[1]), 
+                    y = max(data$ymax) + 0.2 * rect.length, 
+                    label = paste("Ntr =",Ntr), size = cex.text * 0.8, hjust = 0.5)
+            }
+
+            ## main
+            p <- p + geom_line(aes(time, outcome, colour = type,size = type,
+               linetype = type, group = id))
+
+                    ## legend
+            if (Nco >= 50) {
+                co.color = "#4682B430"
+            } else if (Nco >= 20) {
+                co.color = "#4682B450"
+            } else {
+                co.color = "#4682B470"
+            }     
+            if (Ntr == 1) {
+                # legend
+                if (is.null(legend.labs)==FALSE) {
+                    if (length(legend.labs)!=3) {
+                        stop("\n\"legend.labs\" needs to be of length 3.")
+                    }
+                    set.labels <- legend.labs
+                } else {
+                    set.labels <- c("Treated","Estimated Treated Y(0)",co.label) 
+                }       
+                set.limits = c("tr","co","raw.co")         
+                set.colors = c("black","steelblue",co.color)
+                set.linetypes = c("solid","longdash","solid")
+                set.linewidth = line.width[c(1,1,2)]
+                # legend columns
+                if (is.null(legend.ncol)==TRUE) {
+                    legend.ncol <- 1
+                }  
+            } else {
+                # legend
+                if (is.null(legend.labs)==FALSE) {
+                    if (length(legend.labs)!=4) {
+                        stop("\n\"legend.labs\" needs to be of length 4.")
+                    }
+                    set.labels <- legend.labs
+                } else {
+                    set.labels <- c("Treated Average","Estimated Y(0) Average","Treated", co.label)
+                }
+                set.limits = c("tr","co","raw.tr","raw.co")
+                set.colors = c("black","steelblue","#77777750",co.color)
+                set.linetypes = c("solid","longdash","solid","solid")
+                set.linewidth = rep(line.width,each=2)
+                # legend columns
+                if (is.null(legend.ncol)==TRUE) {
+                    legend.ncol <- 2
+                }  
+            }
             
+        }
+
+        # legend 
+        p <- p + scale_colour_manual(limits = set.limits,
+               labels = set.labels,
+               values =set.colors) +
+            scale_linetype_manual(limits = set.limits,
+              labels = set.labels,
+              values = set.linetypes) +
+            scale_size_manual(limits = set.limits,
+              labels = set.labels,
+              values = set.linewidth) 
+        p <- p + guides(linetype = guide_legend(title=NULL, ncol=legend.ncol, bycol=TRUE),
+             colour = guide_legend(title=NULL, ncol=legend.ncol, bycol=TRUE),
+             size = guide_legend(title=NULL, ncol=legend.ncol), bycol=TRUE) 
+
+        # x axis labels
+        if (!is.numeric(time.label)) {
+            p <- p + scale_x_continuous(expand = c(0, 0), breaks = show[T.b], labels = time.label[T.b])
+        }
+
+        # key width in legend
+        p <- p + theme(legend.key.width = unit(2.5,"line"))   
+
 
         
 
-        } else if (type == "weights") {
+    } else if (type == "weights") {
 
         if (sameT0==FALSE) {
             cat("Weighted by the number of treated unit in each subgroup.")
@@ -2224,10 +2277,17 @@ plot.tjbal <- function(x,
         if (log.weights == TRUE) {
             w <- log(w)
         }
+        if (is.null(wmin)==TRUE) {
+            if (log.weights==TRUE) {
+                wmin <- -10
+            } else {
+                wmin <- 0
+            }
+        }
+        w[w < wmin] <- wmin
         if (is.null(xlab)==TRUE) {
             if (log.weights==TRUE) {
-                xlab <- "Weight (logarithmic)"
-                w[w < wmin] <- wmin
+                xlab <- "Weight (logarithmic)"                
             } else {
                 xlab <- "Weight"
             }            
@@ -2321,10 +2381,9 @@ plot.tjbal <- function(x,
         p <- p + geom_point(aes(shape = group, color = group),
           size = 4*size, stroke = stroke, na.rm = TRUE)
 
-    }
+    } # end of weights
 
-    ## legend and axes
-    p <- p + theme(legend.text = element_text(margin = margin(r = 10, unit = "pt"), size = cex.legend),
+     p <- p + theme(legend.text = element_text(margin = margin(r = 10, unit = "pt"), size = cex.legend),
        legend.position = legend.pos,
        legend.background = element_rect(fill="transparent",colour=NA),
        axis.title=element_text(size=cex.lab),
@@ -2334,6 +2393,8 @@ plot.tjbal <- function(x,
        axis.text.x = element_text(size = cex.axis, angle = angle, hjust=x.h, vjust=x.v),
        axis.text.y = element_text(size = cex.axis),
        plot.title = element_text(size = cex.main, hjust = 0.5, face="bold", margin = margin(10, 0, 10, 0)))
+       
+
 
 
     ## title

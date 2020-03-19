@@ -10,10 +10,10 @@
 \author{
   Chad Hazlett <chazlett@ucla.edu>, UCLA
 
-  Yiqing Xu (Maintainer) <yiqingxu@ucsd.edu>, UCSD
+  Yiqing Xu (Maintainer) <yiqingxu@stanford.edu>, Stanford
 }
 \references{
-  Hazlett, Chad and Yiqing Xu, 2018. ``Trajectory Balancing: A General Reweighting Approach to Causal Inference with Time-Series Cross-Sectional Data.'' Working Paper, UCLA and UCSD.
+  Hazlett, Chad and Yiqing Xu, 2020. ``Trajectory Balancing: A General Reweighting Approach to Causal Inference with Time-Series Cross-Sectional Data.'' Working Paper, UCLA and Stanford.
 }
 \seealso{
   \code{\link{tjbal}} and \code{\link{plot.tjbal}}
