@@ -21,7 +21,7 @@ tjbal <- function(
     print.baltable = TRUE, # print out table table
     vce = "jackknife", ## uncertainty estimates
     conf.lvl = 0.95, ## confidence interval
-    nsims = NULL, ## number of bootstrap runs
+    nsims = 200, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
     cores = 4,
     seed = 1234
@@ -47,7 +47,7 @@ tjbal.formula <- function(
     print.baltable = TRUE, # print out table table
     vce = "jackknife", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
-    nsims = NULL, ## number of bootstrap runs
+    nsims = 200, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
     cores = 4,
     seed = 1234
@@ -105,7 +105,7 @@ tjbal.default <- function(
     print.baltable = TRUE, # print out table table
     vce = "jackknife", ## uncertainty via bootstrap
     conf.lvl = 0.95, ## confidence interval
-    nsims = NULL, ## number of bootstrap runs
+    nsims = 200, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
     cores = 4,
     seed = 1234
@@ -147,6 +147,10 @@ tjbal.default <- function(
         if (is.numeric(sigma)==FALSE) {
             stop("\"sigma\" needs to be numeric; the default is 2.")
         }
+    }
+
+    if (is.null(nsims)==TRUE) {
+        nsims <- 200
     }
 
 
