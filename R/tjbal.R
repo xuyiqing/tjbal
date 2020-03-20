@@ -397,7 +397,7 @@ tjbal.multi <- function(
     demean = FALSE, # take out pre-treatment unit mean
     estimator = "mean",
     sigma = NULL, ## tuning parameters   
-    vce = "fixed.weights", ## uncertainty via bootstrap
+    vce = "jackknife", ## uncertainty via jackknife
     conf.lvl = 0.95, ## confidence interval
     nsims = 200, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
@@ -874,7 +874,7 @@ tjbal.single <- function(
     test = TRUE, ## test different sigmas
     nsigma = 5,
     print.baltable = FALSE,
-    vce = "fixed.weights", ## uncertainty via bootstrap
+    vce = "jackknife", ## uncertainty via jackknife
     conf.lvl = 0.95, ## confidence interval
     nsims = 500, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
@@ -954,7 +954,7 @@ tjbal.single <- function(
             w.boot[1:Ntr] <- w.boot[1:Ntr]/sum(w.boot[1:Ntr]) # add up to 1
             w.boot[(Ntr+1):N] <- w.boot[(Ntr+1):N]/sum(w.boot[(Ntr+1):N]) * (-1) # add up to -1
             att.sims[,j]<-apply(data[sample.id, Y.target] * w.boot, 2, sum)
-            att.avg.sims[j,]<-mean(att[Y.target.pst])
+            att.avg.sims[j,]<-mean(att.sims[(T0+1):TT,j])
         }
         cat("\n")
         ## standard errors
