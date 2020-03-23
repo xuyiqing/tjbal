@@ -405,6 +405,8 @@ tjbal.multi <- function(
     seed = 1234  
     ) { 
 
+    set.seed(seed)
+
     TT <- length(Ttot)
     id.tr <- which(data$tr == 1)
     id.co <- which(data$tr == 0)
@@ -428,6 +430,7 @@ tjbal.multi <- function(
 
     ## recenter based on treatment timing
     time.adj <- c(-(T0.max -1) : (TT-T0.min))
+    time.adj.max <- TT-T0.min
     TT.adj <- length(time.adj)
 
     ## storage
@@ -440,9 +443,10 @@ tjbal.multi <- function(
     names(sub.att.avg) <- colnames(sub.att) <- colnames(sub.Ytr.avg) <- colnames(sub.Yct.avg) <- T0.names
     ## number of treated units for each subgroup
     sub.Ytr.adj <- sub.ntr.pst <- sub.ntr <- sub.att.adj <- matrix(0, TT.adj, nT0) 
+    se.sub.att.adj <- matrix(NA, TT.adj, nT0) 
     # naming
-    rownames(sub.Ytr.adj) <-rownames(sub.ntr.pst) <- rownames(sub.ntr) <- rownames(sub.att.adj) <- time.adj
-    colnames(sub.Ytr.adj) <-colnames(sub.ntr.pst) <- colnames(sub.ntr) <- colnames(sub.att.adj) <- T0.names
+    rownames(sub.Ytr.adj) <-rownames(sub.ntr.pst) <- rownames(sub.ntr) <- rownames(se.sub.att.adj) <- rownames(sub.att.adj) <- time.adj
+    colnames(sub.Ytr.adj) <-colnames(sub.ntr.pst) <- colnames(sub.ntr) <- colnames(se.sub.att.adj) <- colnames(sub.att.adj) <- T0.names
      
 
     ## save subsets of the original data, K matrix, and variables to be balanced on
@@ -529,7 +533,7 @@ tjbal.multi <- function(
     sub.ntr.pst[time.adj<=0,] <- 0 
     
     ## average effect (weighted by obs)
-    att.avg <- sum(sub.att.adj * sub.ntr.pst)/sum(sub.ntr.pst)
+    att.avg <- sum(sub.att.adj * sub.ntr.pst, na.rm = TRUE)/sum(sub.ntr.pst)
 
     ## weights.co
     weights.co <- apply(sub.weights.co,1,weighted.mean,T0.count)
@@ -550,8 +554,6 @@ tjbal.multi <- function(
 
     if (vce == "jackknife") {
 
-        #cat("ndims:",ndims,"\n")
-
         # number of jackknife runs
         if (nsims > Ntr) {
             njacks <- Ntr
@@ -569,14 +571,9 @@ tjbal.multi <- function(
         sub.att.jack <- vector("list", length = nT0)
         sub.att.avg.jack <- vector("list", length = nT0)
         names(sub.att.avg.jack) <- names(sub.att.jack) <- colnames(sub.att)
-        # save att.adj and att.avg for all units for each jackknife run 
-        att.jack <- matrix(NA, length(att), njacks) 
-        rownames(att.jack) <- time.adj
-        att.avg.jack <- rep(NA, njacks)
-        names(att.avg.jack) <- colnames(att.jack) <- paste("Drop:",units[drop.id])
-        
+      
         ## prepare for parallel computing
-        if (parallel == TRUE & max(T0.unique)>=8) {                        
+        if (parallel == TRUE) {                        
             if (is.null(cores) == TRUE) {
                 cores <- detectCores()
             }
@@ -588,7 +585,7 @@ tjbal.multi <- function(
         for (i in 1:nT0) {
             
             T0 <- T0.unique[i]
-            cat("Dropping units from Subgroup T0 =",T0,"\n")
+            cat("\nDropping units from Subgroup T0 =",T0)
             drop.id.oneT0 <- drop.id.list[[as.character(T0)]]
 
             # this matrix count the number of treated units for each T0
@@ -606,9 +603,6 @@ tjbal.multi <- function(
                 # att.adj for this run
                 sub.att.adj.tmp <- sub.att.adj
                 sub.att.adj.tmp[,i] <- 0
-                att.jack[,k] <- rowSums(sub.att.adj.tmp * sub.ntr.tmp)/rowSums(sub.ntr.tmp)
-                # att.adj.avg for this run
-                att.avg.jack[k] <- sum(sub.att.adj.tmp * sub.ntr.pst.tmp)/sum(sub.ntr.pst.tmp)
                 # counter
                 k <- k + 1
             } else { # more than one unit in this group 
@@ -659,28 +653,23 @@ tjbal.multi <- function(
                 if (parallel == TRUE & nid >= 8) {
                     
                     ## start    
-                    cat("Parallel computing...") 
+                    cat(" -- Parallel computing...") 
                     jack.out <- foreach(j=1:nid, 
                         .inorder = FALSE,
                         .packages = c("kbal")
                         ) %dopar% {
-                        return(one.jack(data = data.list[[i]], K = K.list[[i]], 
-                            id = drop.id.oneT0[j], ndims = ndims[i], 
-                            matchvar = matchvar.list[[i]], sigma = sigmas[i], 
-                            kernel = kernels[i], constraint = constraint.list[[i]]))
-                    }
-                    
+                        return(
+                            one.jack(data = data.list[[i]], 
+                            K = K.list[[i]], id = drop.id.oneT0[j], 
+                            ndims = ndims[i], matchvar = matchvar.list[[i]], 
+                            sigma = sigmas[i], kernel = kernels[i], 
+                            constraint = constraint.list[[i]])
+                            )
+                    }                    
                     ## save results
                     for (j in 1:nid) { 
                         sub.att.oneT0[,j] <- jack.out[[j]]$att
                         sub.att.avg.oneT0[j] <- jack.out[[j]]$att.avg 
-                        # att.adj for this run (realigned based on T0)        
-                        fill.start <- T0.max-T0+1
-                        fill.end <- fill.start + TT -1 
-                        sub.att.adj.tmp[fill.start:fill.end, i] <- jack.out[[j]]$att
-                        # att.adj and att.avg for this run
-                        att.jack[,k] <- rowSums(sub.att.adj.tmp * sub.ntr.tmp)/rowSums(sub.ntr.tmp)
-                        att.avg.jack[k] <- sum(sub.att.adj.tmp * sub.ntr.pst.tmp)/sum(sub.ntr.pst.tmp)
                         # counter
                         k <- k + 1                
                     }
@@ -695,20 +684,12 @@ tjbal.multi <- function(
 
                         sub.att.oneT0[,j] <- jack$att
                         sub.att.avg.oneT0[j] <- jack$att.avg 
-                        # att.adj for this run (realigned based on T0)          
-                        fill.start <- T0.max-T0+1
-                        fill.end <- fill.start + TT -1 
-                        sub.att.adj.tmp[fill.start:fill.end, i] <- jack$att
-                        # att.adj and att.avg for this run
-                        att.jack[,k] <- rowSums(sub.att.adj.tmp * sub.ntr.tmp)/rowSums(sub.ntr.tmp)
-                        att.avg.jack[k] <- sum(sub.att.adj.tmp * sub.ntr.pst.tmp)/sum(sub.ntr.pst.tmp)
                         # counter
                         k <- k + 1 
                         ## report progress
                         if (j%%50==0)  {cat(".")} 
                     }  # end of single core loop
                 }  # end of T0 with more than one treated unit
-
                 sub.att.jack[[i]] <- sub.att.oneT0
                 sub.att.avg.jack[[i]] <- sub.att.avg.oneT0   
 
@@ -723,7 +704,7 @@ tjbal.multi <- function(
         # att.jack (adjusted) -- all treated units
         # att.avg.jack -- average over all treated units
 
-        if (parallel == TRUE & max(T0.unique)>=8) {
+        if (parallel == TRUE) {
             stopCluster(para.clusters)
         }
 
@@ -735,8 +716,7 @@ tjbal.multi <- function(
         ## critical value for a two-sided test
         c.value <- qnorm(0.5 + conf.lvl/2)
 
-        se.att <- apply(att.jack, 1, function(vec) sd(vec, na.rm=TRUE)) * (Ntr-1)/sqrt(Ntr)
-        se.att.avg <- sd(att.avg.jack, na.rm=TRUE) * (Ntr-1)/sqrt(Ntr) 
+        ## uncertainty for subgroups
         CI.sub.att.low <- CI.sub.att.high <- pvalue.sub.att <- z.sub.att <- se.sub.att <- matrix(NA, TT, nT0)
         se.sub.att.avg <- rep(NA, nT0)
         rownames(se.sub.att) <- Ttot
@@ -752,7 +732,28 @@ tjbal.multi <- function(
                 CI.sub.att.low[,i] <- sub.att[,i] - c.value * se.sub.att[,1]
                 CI.sub.att.high[,i] <- sub.att[,i] + c.value * se.sub.att[,1]
             }
-        }       
+        }
+
+        # se.att
+        group.above1 <- which(is.na(se.sub.att.avg)==FALSE) # more than 1 unit        
+        for (i in group.above1) {
+            T0 <- T0.unique[i]
+            fill.start <- T0.max-T0+1
+            fill.end <- fill.start + TT -1 
+            se.sub.att.adj[fill.start:fill.end, i] <- se.sub.att[,i]            
+        } # now we have: sub.att.adj and se.sub.att.adj 
+        vce.sub.att.adj <- se.sub.att.adj^2
+        sum.vce.bytime <- apply(vce.sub.att.adj[,group.above1] * sub.ntr[,group.above1]^2, 1, sum, na.rm = TRUE)
+        sum.obs.bytime <- apply(sub.ntr[,group.above1], 1, sum)
+        sum.vce.bytime[which(sum.vce.bytime == 0)] <- sum.obs.bytime[which(sum.obs.bytime == 0)] <- NA
+        se.att <- sqrt(sum.vce.bytime/sum.obs.bytime^2)
+
+
+        ## se.att.avg
+        sub.obs <- apply(sub.ntr.pst[,group.above1], 2, sum) # total number of obs by group
+        #att.avg <- sum(sub.att.avg[group.above1] * sub.obs)/sum(sub.obs) # different from using all observations
+        vce.sub.att.avg <- se.sub.att.avg[group.above1]^2
+        se.att.avg <- sqrt(sum(vce.sub.att.avg * sub.obs^2)/(sum(sub.obs)^2))
 
         ## z-score
         z.att <- att/se.att
@@ -796,10 +797,10 @@ tjbal.multi <- function(
         
         ## storage
         out.inference <- list(
-            est.att = est.att, 
-            est.att.avg = est.att.avg, 
-            est.sub.att = est.sub.att,
-            est.sub.att.avg = est.sub.att.avg
+            est.att = round(est.att,4), 
+            est.att.avg = round(est.att.avg,4), 
+            est.sub.att = round(est.sub.att,4),
+            est.sub.att.avg = round(est.sub.att.avg,4)
             ) 
     } 
 
@@ -882,6 +883,7 @@ tjbal.single <- function(
     seed = 1234  
     ) { 
 
+    set.seed(seed)
 
     TT <- length(Ttot)
     id.tr <- which(data$treat == 1)
@@ -1161,8 +1163,8 @@ tjbal.single <- function(
 
         ## storage
         out.inference <- list(
-            est.att = est.att, 
-            est.att.avg = est.att.avg, 
+            est.att = round(est.att,4), 
+            est.att.avg = round(est.att.avg,4), 
             att.sims = att.sims, 
             att.avg.sims = att.avg.sims
             ) 
@@ -1728,7 +1730,11 @@ plot.tjbal <- function(x,
         if (sameT0 == TRUE) {
             matchvar <- x$matchvar
             bal <- x$bal.table
-        }         
+            ntreated <- rep(Ntr, length(time))
+        } else {
+            ntreated <- x$ntreated
+        } 
+
     } else {  # make plots for subgroup
         att <- x$sub.att[,subgroup]      
         tb <- x$est.sub.att[,,subgroup]
@@ -1745,6 +1751,7 @@ plot.tjbal <- function(x,
         sameT0 <- TRUE
         matchvar <- x$matchvar.list[[subgroup]]       
         bal <- x$bal.table.list[[subgroup]]  
+        ntreated <- rep(Ntr, length(time))
     }
 
 
@@ -1782,6 +1789,8 @@ plot.tjbal <- function(x,
             show <- which(time>=xlim[1]& time<=xlim[2])     
         } else {
             show <- 1:length(time)    
+            Ntr.max <- max(ntreated)
+            show <- show[which(ntreated >= Ntr.max/3)]
         }        
     }
 
@@ -1849,7 +1858,6 @@ plot.tjbal <- function(x,
         ## construct data for plotting
         if (CI==FALSE) { 
             cat("Uncertainty estimates not available.\n")
-            ntreated <- rep(Ntr, length(time))
             data <- cbind.data.frame(time, ATT = att, n.Treated = ntreated)[show,]             
         } else {
             data <- cbind.data.frame(time, tb)[show,]
@@ -1923,12 +1931,6 @@ plot.tjbal <- function(x,
             } else {
                 co.label <- "Controls"
             }
-        }
-
-        if (sameT0==TRUE) {
-            ntreated <- rep(Ntr, length(time))
-        } else {
-            ntreated <- x$ntreated
         }
         
         
