@@ -108,12 +108,14 @@ tjbal.default <- function(
     nsims = 200, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
     cores = 4,
-    seed = 1234
+    seed = NULL
     ) {
 
     ##-------------------------------##
     ## Checking Parameters
     ##-------------------------------##  
+
+    if (is.null(seed)==FALSE) {set.seed(seed)}
 
     
     if (class(data)[1] == "tbl_df") {
@@ -363,14 +365,14 @@ tjbal.default <- function(
             demean = demean, estimator = estimator, sigma = sigma, 
             print.baltable = print.baltable,
             vce = vce, conf.lvl = conf.lvl,
-            nsims = nsims, parallel = parallel, cores = cores, seed = seed)         
+            nsims = nsims, parallel = parallel, cores = cores)         
     } else {        
         bal.out <- tjbal.multi(data = data.wide, Y = Yname, D = "treat", X = Xname,
             Y.match.time = Y.match.time, Y.match.npre = Y.match.npre, 
             Ttot = Ttot, unit = "id", 
             demean = demean, estimator = estimator, sigma = sigma, 
             vce = vce, conf.lvl = conf.lvl,
-            nsims = nsims, parallel = parallel, cores = cores, seed = seed)  
+            nsims = nsims, parallel = parallel, cores = cores)  
     } 
 
     out <- c(list(sameT0 = sameT0, index = index, Yname = Yname), bal.out)
@@ -401,12 +403,10 @@ tjbal.multi <- function(
     conf.lvl = 0.95, ## confidence interval
     nsims = 200, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
-    cores = 4,
-    seed = 1234  
+    cores = 4
     ) { 
 
-    set.seed(seed)
-
+    
     TT <- length(Ttot)
     id.tr <- which(data$tr == 1)
     id.co <- which(data$tr == 0)
@@ -879,11 +879,8 @@ tjbal.single <- function(
     conf.lvl = 0.95, ## confidence interval
     nsims = 500, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
-    cores = 4,
-    seed = 1234  
+    cores = 4 
     ) { 
-
-    set.seed(seed)
 
     TT <- length(Ttot)
     id.tr <- which(data$treat == 1)
