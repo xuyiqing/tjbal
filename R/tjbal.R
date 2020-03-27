@@ -24,7 +24,7 @@ tjbal <- function(
     nsims = 200, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
     cores = 4,
-    seed = 1234
+    seed = NULL
     ) {
     UseMethod("tjbal")
 }   
@@ -50,7 +50,7 @@ tjbal.formula <- function(
     nsims = 200, ## number of bootstrap runs
     parallel = TRUE, ## parallel computing
     cores = 4,
-    seed = 1234
+    seed = NULL
     ) {
 
     ## parsing
