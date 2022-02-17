@@ -24,7 +24,7 @@ importFrom("kbal","kbal")
 ##importFrom("GGally", "ggpairs")
 ##importFrom("mvtnorm", "rmvnorm")
 ##importFrom("abind", "abind")
-##importFrom("panelView", "panelView")
+##importFrom("panelview", "panelview")
 
 export(tjbal)
 S3method("tjbal", "default")
