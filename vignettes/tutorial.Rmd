@@ -1,0 +1,218 @@
+---
+title: 'Tutorial'
+output:
+  rmarkdown::html_vignette:
+    toc: false
+    toc_depth: 4
+    number_sections: false
+bibliography: references.bib      
+vignette: >
+  %\VignetteIndexEntry{Tutorial}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}  
+---
+
+
+## Example 1: Returns to Office of China's NPC
+
+We illustrate **tjbal** using a dataset from @truex2014returns, in which the author investigates the returns to seats in China's National People's Congress by CEOs of listed firms. The dataset **npc** is shipped with the **tjbal** package (we dropped one treated firm with extremely large revenue in 2007 to improve overlap between the treated and control units; see details in the paper). To load the package and the dataset: 
+```{r}
+library(tjbal)
+data(tjbal)
+ls()
+head(npc)
+```
+
+First, we take a look at the data structure. The outcome variable is `roa` and the treatment indicator is `treat`; the unit and time indicators are `gvkey` and `fyear`, respectively. There are 47 treated firms whose CEOs became NPC members in 2008 and 939 control firms whose CEOs were never NPC members from 2005 to 2010.
+
+The following plot shows the treatment status of the first 50 firms based on firm ID:
+```{r}
+library(panelView)
+panelview(roa ~ treat + so_portion + rev2007, data = npc, show.id = c(1:50), 
+          index = c("gvkey","fyear"), xlab = "Year", ylab = "Firm ID",
+          axis.lab.gap = c(0,1), by.timing = TRUE)
+with(npc, table(fyear, treat))
+```
+
+### Difference-in-Differences (DID)
+
+We then apply the difference-in-differences (DiD) method without controlling for any covariates. In the formula of **tjbal**, the left-hand-side variable is the outcome and the first right-hand-side variable is the dichotomous treatment indicator. We specify unit and time indicators using the `index` option. At the moment, we do not want to balance on pre-treatment outcomes, therefore, we set `Y.match.npre = 0`. Because an DID approach involves subtracting pre-treatment means from the outcome for each unit, we set `demean = TRUE`. Uncertainty estimates are obtained via a bootstrap procedure. 
+
+**tjbal** provides three balancing approaches: (1) `"mean"`, which stands for mean-balancing; (2) `"kernel"`, which stands for kernel-balancing; and (3) `"meanfirst"`, which stands for kernel balancing with mean balancing constraints. `"meanfirst"` will prioritize balancing on covariate means over higher-order terms and interactions. The default option is `"meanfirst"`. In this case, because we do not have any covariates to seek balance on, the `estimator` option is redundant.  
+
+For datasets with only one treatment timing, **tjbal** provides three types of uncertainty estimates: `vce = "fixed.weights"` which treats balancing weights as fixed; `"jackknife"` (or `"jack"`), which conducts jackknife by omitting one treated unit at a time, and `"bootstrap"` (or `"boot"`), which conducts non-parametric bootstrapping by reshuffle both the treated and control units. We show in the paper that, with reasonably large samples, these three methods yield very similar results. When `"jackknife"` or `"bootstrap"` is chosen, `nsims` determines the number of jackknife or bootstrap runs. With jackknife, `nsims` will be ignored if it is bigger than the number of treated units. 
+
+The **print** function present the result, which shows a non-significant effect of NPC membership on firms' return on assets (ROA). 
+```{r npc_did, cache = TRUE}
+out.did <- tjbal(roa ~ treat, data = npc,   
+  index = c("gvkey","fyear"), Y.match.npre = 0, 
+  demean = TRUE, vce = "boot", nsims = 200)
+print(out.did)
+```
+
+The **plot** function visualizes the result, By default (`type = gap`), it plots the average treatment effect on the treated (ATT) over time (from 2008 to 2010). We add a histogram to illustrate the number of treated units at the bottom of the figure. It can be turned off by setting `count == FALSE`.
+```{r}
+plot(out.did, ylab = "ATT", ylim = c(-0.06, 0.06))
+```
+
+We can also plot the treated and estimated $Y(0)$ averages by specifying `type = "counterfactual` or simply `type = "ct"`. Note that, with the DID approach, the estimated $Y(0)$ averages do not fit perfectly with the treated averaged over the pre-treatment periods. 
+```{r}
+plot(out.did, type = "counterfactual", count = FALSE)
+```
+
+The **plot** function can also visualize the distribution of weights of the control units (the total weights added up to $N_{tr}$, the number of the treated units). With the DID method, all control units are equally weighted:
+```{r}
+plot(out.did, type = "weights")
+```
+
+### Mean Balancing
+
+Next, we apply the mean balancing approach (which the author uses in the original paper). In the formula, we also add two covariates, `so_portion` and `rev2007`. Note that they will not be put into regressions directly; rather, the algorithm will seek balance on them as well as the three pre-treatment outcomes. Because we do not employ the kernel transformation, we set `estimator = "mean"`.
+```{r npc_mbal, cache = TRUE}
+out.mbal <- tjbal(roa ~ treat + so_portion + rev2007, data = npc,
+  index = c("gvkey","fyear"), demean = FALSE, estimator = "mean",
+  vce = "jackknife")
+```
+
+We see that NPC membership increases ROA by about 2 percentage points, and it is highly statistically significant. 
+```{r}
+print(out.mbal)
+```
+
+Alternatively, we can also specify the outcome (`Y`), treatment (`D`), and covariates (`X`) separately.
+```{r, eval=FALSE}
+out.mbal <- tjbal(data = npc, Y = "roa", D = "treat", X = c("so_portion","rev2007"), 
+  index = c("gvkey","fyear"), demean = FALSE, estimator = "mean",
+  vce = "jackknife", nsims = 200)
+```
+
+We show the `gap` plot, the `counterfactual` plot, and the `weights`plot again. With mean balancing, the pre-treatment outcomes are perfectly balanced between the treatment and control groups. 
+```{r}
+plot(out.mbal, ylim = c(-0.04, 0.06))
+plot(out.mbal, type = "ct")
+```
+
+We can also add two bands that represent the ranges of the 5 to 95% quantile of the treated and control trajectories to the plot by setting `raw = "band"`. When `trim = TRUE` (default), the control group data will be trimmed based on weights assigned to the control units (up to 90% of the total weight). 
+
+We can change the font size of almost all elements in the figure by setting `cex.main` (for title), `cex.lab` (for axis titles), `cex.axis` (for numbers on the axes), `cex.legend` (for legend) and `cex.text` for text in the figure. The numbers are all relative to the default.
+
+A set of legend options can be used to adjust the look of the legends, including `legendOff` (turn off legends), `legend.pos` (position), `legend.ncol` (number of columns), and `legend.labs` (change label texts).
+```{r}
+plot(out.mbal, type = "ct", raw = "band", ylim = c(-0.2, 0.3),
+     cex.main = 0.9, cex.lab = 1.1, cex.axis = 0.9, cex.legend= 0.8, cex.text = 1.5,
+     legend.pos = "top")
+```
+
+```{r}
+plot(out.mbal, type = "weights")
+```
+
+The **plot** function can also check balance in pre-treatment outcomes and covariates between the treatment and control groups before and after reweighting:
+```{r}
+plot(out.mbal, type = "balance")
+```
+
+### Kernel Balancing (w/ mean balancing constraints)
+
+Finally, we apply the kernel balancing method (while respecting mean-balancing constraints) by setting `estimator = "meanfirst"`. Note that kernel balancing is significantly more computationally intensive than mean balancing. Parallel computing with 4 cores on a 2016 iMac takes about 1 minutes to finish 47 jackknife runs.
+```{r npc_kbal, cache = TRUE}
+begin.time<-Sys.time() 
+out.kbal <- tjbal(roa ~ treat + so_portion + rev2007, data = npc,  
+  index = c("gvkey","fyear"), estimator = "meanfirst", demean = FALSE, vce = "jackknife")
+print(Sys.time()-begin.time) 
+```
+
+With kernel balancing with mean balancing weights, we find that NPC membership of the CEO increases a firm's ROA by 1.4 percentage points. The estimate remains highly statistically significant. 
+```{r}
+print(out.kbal)
+```
+
+Balance (in means) in the pre-treatment outcomes and covariates remain great, but no longer perfect. This is because kernel balancing also attempts to achieve balance in high-order features of these variables. 
+```{r}
+plot(out.kbal, ylim = c(-0.04, 0.06))
+```
+
+```{r}
+plot(out.kbal, type = "ct", xlab = "Year", ylab = "Return to Assets")
+```
+
+
+```{r}
+plot(out.kbal, type = "weights")
+```
+
+```{r}
+plot(out.kbal, type = "balance")
+```
+
+For example, kernel balancing also makes the standard deviations (or variance) of these variables in the treatment and reweighted control groups more similar than mean balancing. 
+```{r}
+plot(out.mbal, type = "balance", stat = "sd")
+plot(out.kbal, type = "balance", stat = "sd")
+```
+
+For this example, setting `estimator = "kernel"` (i.e. kernel balancing without incorporating mean balancing constraints) yields very similar results. 
+
+*** 
+
+## Example 2: German Reunification
+
+In the second example, we re-investigate the effect of German reunification on West Germany's GDP growth using data from @abadie2015comparative. Variable `treat` indicate West Germany over the post-1990 periods. Again, we look at the data structure first:
+```{r}
+panelview(data = germany, gdp ~ treat, index = c("country","year"), 
+          xlab = "Year", ylab = "Country", by.timing = TRUE,
+          axis.adjust = TRUE, axis.lab.gap = c(1,0))
+```
+
+Next, we implement the mean balancing method. Different from the previous example, we take averages for the covariates over different time periods (to be consistent with the original paper). Make sure that the length of the list set by `X.avg.time` is the the same as the length of the variable names in `X`.
+```{r germany_mbal, cache = TRUE, warning = FALSE}
+out2.mbal <- tjbal(data = germany, Y = "gdp", D = "treat", Y.match.time = c(1960:1990), 
+  X = c("trade","infrate","industry", "schooling", "invest80"), 
+  X.avg.time = list(c(1981:1990),c(1981:1990),c(1981:1990),c(1980:1985),c(1980)),
+  index = c("country","year"), demean = TRUE)
+```
+
+Alternatively, we can use the following syntax:
+```{r germany_kbal, cache = TRUE, warning = FALSE}
+out2.kbal <- tjbal(gdp ~ treat + trade + infrate + industry + schooling + invest80, 
+                  data = germany, Y.match.time = c(1960:1990), X.avg.time = list(c(1981:1990), c(1981:1990), c(1981:1990),c(1980:1985),c(1980)),
+                  index = c("country","year"), estimator = "kernel", demean = TRUE)
+```
+
+We plot the estimated treatment effect from both mean balancing and kernel balancing. It seems that the kernel balancing approach yield slightly better pre-treatment fit---this is not always the case.
+```{r}
+plot(out2.mbal, ylim = c(-5000,5000))
+plot(out2.kbal, ylim = c(-5000,5000))
+```
+
+The estimated counterfactual for West Germany.  
+```{r}
+plot(out2.mbal, type = "counterfactual", count = FALSE) 
+plot(out2.kbal, type = "ct", count = FALSE) 
+```
+
+By setting `raw = "all"` and `trim = TRUE` (default), we can add to the counterfactual plot the trajectories of the heavily weighted control units, whose assigned weights add up to 90% of the total weight. The number 90% can be adjusted by the `trim.wtot` option. If `trim = FALSE`, all control trajectories will be shown. 
+```{r}
+plot(out2.mbal, type = "ct", raw = "all", trim.wtot = 0.9) 
+```
+
+We can see that kernel balancing put more weights on a much smaller number of control units. 
+```{r}
+plot(out2.kbal, type = "ct", raw = "all") 
+```
+
+By setting `raw = "band"` and `trim = "TRUE"` (default), we show the range of the trajectories of heavily weighted controls.  
+```{r}
+plot(out2.mbal, type = "ct", raw = "band") 
+```
+
+Finally, the `weights` plot confirms that kernel balancing puts more weights on fewer control units. 
+```{r}
+plot(out2.mbal, type = "weights")
+plot(out2.kbal, type = "weights")
+```
+
+---
+
+# Reference
+
