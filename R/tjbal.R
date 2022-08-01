@@ -1287,11 +1287,12 @@ tjbal.core <- function(
             cat("\nOptimization:\n")
         }
 
+     
         # mean balancing
         if (estimator == "mean") {            
             bal.type <- "mbal"
             tmp <- capture.output(
-                kbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
+                kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
                     treatment = data$treat, b=NULL, 
                     linkernel = TRUE, 
                     printprogress = FALSE, sampledinpop = FALSE))
@@ -1303,7 +1304,7 @@ tjbal.core <- function(
         if (estimator == "kernel") {
             bal.type <- "kbal"
             tmp <- capture.output(
-                kbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
+                kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
                     treatment = data$treat, b=b, 
                     linkernel = FALSE, 
                     printprogress = FALSE, sampledinpop = FALSE))
@@ -1313,7 +1314,7 @@ tjbal.core <- function(
         # mean first
         if (estimator == "meanfirst") {
             tmp <- capture.output(
-                mbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
+                mbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
                     treatment = data$treat, b=NULL, 
                     linkernel = TRUE, 
                     printprogress = FALSE, sampledinpop = FALSE))
@@ -1321,7 +1322,7 @@ tjbal.core <- function(
             if (is.null(mbal.out$numdims) == FALSE) {
                 mbal.ndims <- mbal.out$numdims # mbal dimensions   
                 mbal.svd.keep <- mbal.out$svdK$u[, 1:mbal.ndims] # mbal constraints
-                mbal.bias.ratio <- mbal.out$biasbound.opt/mbal.out$biasbound.orig
+                mbal.bias.ratio <- mbal.out$biasbound_opt/mbal.out$biasbound_orig
                 success <- TRUE                  
             } else {
                 success <- FALSE                  
@@ -1331,7 +1332,7 @@ tjbal.core <- function(
                 kbal.out <- mbal.out                                     
             } else {
                 tmp <- capture.output(
-                    kbal.out <- suppressWarnings(kbal(allx = data[,matchvar],
+                    kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
                         treatment = data$treat, b=b, 
                         constraint = mbal.svd.keep,
                         printprogress = FALSE, 
@@ -1357,7 +1358,7 @@ tjbal.core <- function(
             w <- c(weights.tr, weights.co*(-1))
             # reporting
             ndims <- kbal.out$numdims
-            bias.ratio <- kbal.out$biasbound.opt/kbal.out$biasbound.orig
+            bias.ratio <- kbal.out$biasbound_opt/kbal.out$biasbound_orig
             if (bal.type == "mbal") {
                 cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
                     "; num.dims = ",ndims," (mbal)\n"))
