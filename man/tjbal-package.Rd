@@ -1,6 +1,7 @@
 \name{tjbal-package}
 \alias{tjbal-package}
 \docType{package}
+\keyword{internal}
 \title{Trajectory Balancing}
 \description{Implements mean balancing and kernel balancing with time-series cross-sectional data.}
 \details{

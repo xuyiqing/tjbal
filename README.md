@@ -14,24 +14,22 @@ MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.or
 **R** package for implementing trajectory balancing, a kernel-based
 reweighting method for causal inference with panel data.
 
-**Repo:** [GitHub](https://github.com/xuyiqing/tjbal) (0.3.1)
+**Repo:** [GitHub](https://github.com/xuyiqing/tjbal)
 
 **Examples:** R code used in the
 [tutorial](https://yiqingxu.org/packages/tjbal/articles/tutorial.html)
 can be downloaded from [here](tjbal_examples.R).
 
-**Reference**: Hazlett, Chad and Yiqing Xu, 2018. \`\`Trajectory
-Balancing: A General Reweighting Approach to Causal Inference with
-Time-Series Cross-Sectional Data.’’ Working Paper, UCLA and Stanford.
-Available at SSRN:
-<https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3214231>.
+**Reference**: Hazlett, Chad and Yiqing Xu, 2018. “Trajectory Balancing:
+A General Reweighting Approach to Causal Inference with Time-Series
+Cross-Sectional Data.” Working Paper, UCLA and Stanford. Available at
+SSRN: <https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3214231>.
 
 ## Installation
 
 <!---
 You can install **fect** directly from CRAN by typing the following command in the **R** console: 
-
-
+&#10;
 ```r
 install.packages('fect', type = 'source')
 ```
@@ -42,7 +40,8 @@ typing the following commands:
 
 ``` r
 install.packages('devtools', repos = 'http://cran.us.r-project.org') # if not already installed
-devtools::install_github('chadhazlett/kbal')
+# devtools::install_github('chadhazlett/kbal')
+devtools::install_github("csterbenz1/KBAL", ref = "cat_kernel")
 devtools::install_github('xuyiqing/tjbal')
 ```
 

@@ -12,6 +12,15 @@ vignette: >
   %\VignetteEncoding{UTF-8}  
 ---
 
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  cache = FALSE,
+  fig.width = 7,
+  fig.height = 5.5,
+  comment = "#>"
+)
+```  
 
 ## Example 1: Returns to Office of China's NPC
 
@@ -30,7 +39,8 @@ The following plot shows the treatment status of the first 50 firms based on fir
 library(panelView)
 panelview(roa ~ treat + so_portion + rev2007, data = npc, show.id = c(1:50), 
           index = c("gvkey","fyear"), xlab = "Year", ylab = "Firm ID",
-          axis.lab.gap = c(0,1), by.timing = TRUE)
+          axis.lab.gap = c(0,1), by.timing = TRUE, 
+          display.all = TRUE, axis.lab = "time")
 with(npc, table(fyear, treat))
 ```
 
