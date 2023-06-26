@@ -16,7 +16,7 @@ tjbal <- function(
     Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
     demean = TRUE, # take out pre-treatment unit mean
-    estimator = "meanfirst",  # mean, meanfirst, kernel
+    estimator = "mean",  # mean, meanfirst, kernel
     sigma=NULL,
     print.baltable = TRUE, # print out table table
     vce = "jackknife", ## uncertainty estimates
@@ -366,7 +366,7 @@ tjbal.default <- function(
             print.baltable = print.baltable,
             vce = vce, conf.lvl = conf.lvl,
             nsims = nsims, parallel = parallel, cores = cores)         
-    } else {        
+    } else { 
         bal.out <- tjbal.multi(data = data.wide, Y = Yname, D = "treat", X = Xname,
             Y.match.time = Y.match.time, Y.match.npre = Y.match.npre, 
             Ttot = Ttot, unit = "id", 

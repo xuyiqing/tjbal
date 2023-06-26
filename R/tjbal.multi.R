@@ -68,12 +68,12 @@ tjbal.multi <- function(
     ## save subsets of the original data, K matrix, and variables to be balanced on
     constraint.list <- bal.table.list <- matchvar.list <- K.list <- data.list <- vector("list", length = nT0)  
     ## other storage
-    success <- sigmas <- ndims <- rep(0, nT0) 
+    success <- sigmas <- ndims <- ndims.mbal <- rep(0, nT0) 
     bias.ratios <- rep(1, nT0) 
     kernels <- rep(NA, nT0)
     
 
-    cat("Balancing...\n")        
+    cat("Balancing...\n")  
     for (i in 1:nT0) {
 
         T0 <- T0.unique[i]
@@ -197,7 +197,7 @@ tjbal.multi <- function(
             registerDoParallel(para.clusters)            
         }
 
-        k <- 1
+        k <- 1        
         for (i in 1:nT0) {
             
             T0 <- T0.unique[i]

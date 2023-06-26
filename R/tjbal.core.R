@@ -93,14 +93,16 @@ tjbal.core <- function(
             cat("\nOptimization:\n")
         }
 
-     
+        ndims <- 0
+        ndims.mbal <- 0
+        
         # mean balancing
         if (estimator == "mean") {            
             bal.type <- "mbal"
             tmp <- capture.output(
                 kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
                     treatment = data$treat, b=NULL, 
-                    linkernel = TRUE, 
+                    linkernel = TRUE, fullSVD = TRUE,
                     printprogress = FALSE, sampledinpop = FALSE))
                 , file = NULL) 
 
@@ -112,21 +114,23 @@ tjbal.core <- function(
             tmp <- capture.output(
                 kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
                     treatment = data$treat, b=b, 
-                    linkernel = FALSE, 
+                    linkernel = FALSE, fullSVD = TRUE,
                     printprogress = FALSE, sampledinpop = FALSE))
                 , file = NULL)
         } # end of kernel balancing
 
         # mean first
         if (estimator == "meanfirst") {
+            #cat("here\n")
             tmp <- capture.output(
                 kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
-                    treatment = data$treat, b=b, 
+                    treatment = data$treat, b=b, fullSVD = TRUE,
                     linkernel = FALSE, meanfirst = TRUE,
                     printprogress = FALSE, sampledinpop = FALSE))
                 , file = NULL) 
+            #cat("here2\n")    
             if (is.null(kbal.out$meanfirst_dims) == FALSE) {
-                mbal.ndims <- kbal.out$meanfirst_dims # mbal dimensions   
+                ndims.mbal <- kbal.out$meanfirst_dims # mbal dimensions   
                 mbal.svd.keep <- kbal.out$meanfirst_cols # mbal constraints
                 kbal.bias.ratio <- kbal.out$biasbound_opt/kbal.out$biasbound_orig
                 if (is.null(kbal.out$numdims) == FALSE) {
@@ -140,6 +144,7 @@ tjbal.core <- function(
             }
         } # end of mean first
 
+        # did some kernel balancing
         if (is.null(kbal.out$numdims) == FALSE) {
             success <- TRUE
         }
@@ -150,21 +155,23 @@ tjbal.core <- function(
             weights.co <- kbal.out$w[id.co]/Nco # controls add up to 1;
             w <- c(weights.tr, weights.co * (-1))
             # reporting
-            ndims <- kbal.out$numdims
+            ndims <- kbal.out$numdims #kbal dimensions
+            if (is.null(ndims) == TRUE) {ndims <- 0}
             bias.ratio <- kbal.out$biasbound_opt/kbal.out$biasbound_orig
-            if (bal.type == "mbal") {
+            if (estimator == "mean") {
                 cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
                     "; num.dims = ",ndims," (mbal)\n"))
             }            
-            if (bal.type == "kbal" && estimator == "kernel") {
+            if (estimator == "kernel") {
                 cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
                     "; num.dims = ",ndims," (kbal)\n"))                
             }
-            if (bal.type == "kbal" && estimator == "meanfirst") {
+            if (estimator == "meanfirst") {
                 cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
-                    "; num.dims = ",mbal.ndims," + ",ndims," (mbal + kbal)\n"))
+                    "; num.dims = ",ndims.mbal," + ",ndims," (mbal + kbal)\n"))
             }            
         } else {
+            ndims <- 0
             cat("\nSolution not found. Equal weights being used.\n")
         }
     } else {
@@ -179,8 +186,8 @@ tjbal.core <- function(
     
     ## treated and control data
     Y.var  <- paste0(Y, Ttot)
-    Y.tr.bar <- apply(data[id.tr, Y.var], 2, mean, na.rm=TRUE)
-    Y.co.bar <- apply(data[id.co, Y.var], 2, mean, na.rm=TRUE)
+    Y.tr.bar <- apply(data[id.tr, Y.var, drop = FALSE], 2, mean, na.rm=TRUE)
+    Y.co.bar <- apply(data[id.co, Y.var, drop = FALSE], 2, mean, na.rm=TRUE)
     Y.ct.bar <- Y.tr.bar - att
     Y.bar <- cbind(Y.tr.bar,Y.ct.bar, Y.co.bar)  
 
@@ -244,12 +251,12 @@ tjbal.core <- function(
         if (success == TRUE) {
             out <- c(out,
             list(bias.ratio = bias.ratio,
-                ndims = ndims,            
+                ndims = ndims,
                 kbal.out = kbal.out,
                 bal.table = bal.table,                
                 b = b))
             if (estimator == "meanfirst") {
-                out <- c(out, list(constraint = mbal.svd.keep))
+                out <- c(out, list(ndims.mbal = ndims.mbal, constraint = mbal.svd.keep))
             }
             if (bal.type == "kbal") {
                 out <- c(out, list(b = b))
