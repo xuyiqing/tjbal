@@ -8,7 +8,7 @@ tjbal.multi <- function(
     Y,
     D,
     X,
-    X.cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
+    cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
     mixed.data=FALSE, # TRUE if X contains categorical/one-hot/dummy encoded variables
     Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
@@ -83,7 +83,7 @@ tjbal.multi <- function(
         id.tr.one <- which(T0.all == T0)    
 
         out <- tjbal.core(data = data, Y = Y, X = X,
-            X.cat.columns = X.cat.columns, mixed.data=mixed.data=FALSE,
+            cat.columns = cat.columns, mixed.data=mixed.data=FALSE,
             Y.match.time = Y.match.time, 
             Y.match.npre = Y.match.npre, Ttot = Ttot, T0 = T0, id.tr = id.tr.one, id.co = id.co,
             demean = demean, estimator = estimator, sigma = sigma, 
@@ -240,7 +240,7 @@ tjbal.multi <- function(
                             tmp <- capture.output(                               
                                 kbal.jack <- suppressWarnings(kbal(
                                     allx = data[-id, matchvar], 
-                                    K = K[-id,], mixed_data = mixed_data, cat_columns=X.cat.columns,
+                                    K = K[-id,], mixed_data = mixed_data, cat_columns=cat.columns,
                                     constraint = constraint[-id,], 
                                     treatment = data[-id, D],
                                     linkernel = (1-kernel), b = sigma, 

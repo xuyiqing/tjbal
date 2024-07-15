@@ -10,7 +10,7 @@ tjbal <- function(
     Y, # outcome
     D, # treatment
     X = NULL, # time-invariant covariates
-    X.cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
+    cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
     mixed.data=FALSE, # TRUE if X contains categorical/one-hot/dummy encoded variables
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
@@ -38,7 +38,7 @@ tjbal <- function(
 tjbal.formula <- function(
     formula = NULL,
     data, # data in long form
-    X.cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
+    cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
     mixed.data=FALSE, # TRUE if X contains categorical/one-hot/dummy encoded variables
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
@@ -77,7 +77,7 @@ tjbal.formula <- function(
     ## run the model
     out <- tjbal.default(data = data, Y = Yname,
                           D = Dname, X = Xname,
-                          X.cat.columns = X.cat.columns, mixed.data=mixed.data,
+                          cat.columns = cat.columns, mixed.data=mixed.data,
                           X.avg.time = X.avg.time, index = index, trim.npre = trim.npre,
                           Y.match.time= Y.match.time, Y.match.npre = Y.match.npre,
                           demean = demean, estimator = estimator,
@@ -99,7 +99,7 @@ tjbal.default <- function(
     Y, # outcome
     D, # treatment
     X = NULL, # time-invariant covariates
-    X.cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
+    cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
     mixed.data=FALSE, # TRUE if X contains categorical/one-hot/dummy encoded variables
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
@@ -367,7 +367,7 @@ tjbal.default <- function(
 
     if (sameT0 == TRUE) {
         bal.out <- tjbal.single(data = data.wide, Y = Yname, D = "treat", X = Xname,
-            X.cat.columns = X.cat.columns, mixed.data=mixed.data=FALSE,
+            cat.columns = cat.columns, mixed.data=mixed.data=FALSE,
             Y.match.time = Y.match.time, Y.match.npre = Y.match.npre,
             Ttot = Ttot, unit = "id",
             demean = demean, estimator = estimator, sigma = sigma,
@@ -376,7 +376,7 @@ tjbal.default <- function(
             nsims = nsims, parallel = parallel, cores = cores)
     } else {
         bal.out <- tjbal.multi(data = data.wide, Y = Yname, D = "treat", X = Xname,
-            X.cat.columns = X.cat.columns, mixed.data=mixed.data=FALSE,
+            cat.columns = cat.columns, mixed.data=mixed.data=FALSE,
             Y.match.time = Y.match.time, Y.match.npre = Y.match.npre,
             Ttot = Ttot, unit = "id",
             demean = demean, estimator = estimator, sigma = sigma,

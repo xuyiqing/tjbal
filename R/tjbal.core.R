@@ -8,7 +8,7 @@ tjbal.core <- function(
     data, ## data in wide form
     Y,
     X,
-    X.cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
+    cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
     mixed.data=FALSE, # TRUE if X contains categorical/one-hot/dummy encoded variables
     Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
@@ -104,7 +104,7 @@ tjbal.core <- function(
             tmp <- capture.output(
                 kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
                     treatment = data$treat, b=NULL,
-                    mixed_data = mixed_data, cat_columns=X.cat.columns,
+                    mixed_data = mixed_data, cat_columns=cat.columns,
                     linkernel = TRUE, fullSVD = TRUE,
                     printprogress = FALSE, sampledinpop = FALSE))
                 , file = NULL)
@@ -117,7 +117,7 @@ tjbal.core <- function(
             tmp <- capture.output(
                 kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
                     treatment = data$treat, b=b,
-                    mixed_data = mixed_data, cat_columns=X.cat.columns,
+                    mixed_data = mixed_data, cat_columns=cat.columns,
                     linkernel = FALSE, fullSVD = TRUE,
                     printprogress = FALSE, sampledinpop = FALSE))
                 , file = NULL)
@@ -129,7 +129,7 @@ tjbal.core <- function(
             tmp <- capture.output(
                 kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
                     treatment = data$treat, b=b, fullSVD = TRUE,
-                    mixed_data = mixed_data, cat_columns=X.cat.columns,
+                    mixed_data = mixed_data, cat_columns=cat.columns,
                     linkernel = FALSE, meanfirst = TRUE,
                     printprogress = FALSE, sampledinpop = FALSE))
                 , file = NULL)

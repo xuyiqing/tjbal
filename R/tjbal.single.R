@@ -9,7 +9,7 @@ tjbal.single <- function(
     Y,
     D,
     X,
-    X.cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
+    cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
     mixed.data=FALSE, # TRUE if X contains categorical/one-hot/dummy encoded variables
     Y.match.time = NULL,
     Y.match.npre = NULL, # fix the number of pre-periods for balancing when T0s are different
@@ -47,7 +47,7 @@ tjbal.single <- function(
     } 
 
     out <- tjbal.core(data = data, Y = Y, X = X, 
-        X.cat.columns = X.cat.columns, mixed.data=mixed.data=FALSE,
+        cat.columns = cat.columns, mixed.data=mixed.data=FALSE,
         Y.match.time = Y.match.time, 
         Y.match.npre = Y.match.npre, Ttot = Ttot, T0 = T0, id.tr = id.tr, id.co = id.co,
         demean = demean, estimator = estimator, sigma = sigma, 
@@ -130,7 +130,7 @@ tjbal.single <- function(
                 tmp <- capture.output(                                
                     kbal.boot <- suppressWarnings(kbal(allx = data.tmp[, matchvar], 
                         treatment = data.tmp[, D],
-                        K = K[sample.id, , drop = FALSE], mixed_data = mixed_data, cat_columns=X.cat.columns,
+                        K = K[sample.id, , drop = FALSE], mixed_data = mixed_data, cat_columns=cat.columns,
                         constraint = constraint[sample.id, , drop = FALSE], 
                         linkernel = (1-kernel), fullSVD = TRUE,
                         minnumdims = max(0,ndims-5), maxnumdims = ndims,
@@ -215,7 +215,7 @@ tjbal.single <- function(
                 data.tmp <- data[sample.id, ]
                 tmp <- capture.output(
                     kbal.jack <- suppressWarnings(kbal(allx = data.tmp[, matchvar], 
-                        K = K[sample.id, , drop = FALSE], mixed_data = mixed_data, cat_columns=X.cat.columns,
+                        K = K[sample.id, , drop = FALSE], mixed_data = mixed_data, cat_columns=cat.columns,
                         constraint = constraint[sample.id, , drop = FALSE], 
                         treatment = data.tmp[, D],
                         linkernel = (1-kernel), fullSVD = TRUE,
