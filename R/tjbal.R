@@ -10,6 +10,8 @@ tjbal <- function(
     Y, # outcome
     D, # treatment
     X = NULL, # time-invariant covariates
+    X.cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
+    mixed.data=FALSE, # TRUE if X contains categorical/one-hot/dummy encoded variables
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
     trim.npre = 0, # drop units with <= certain periods of pre-treatment data
@@ -27,7 +29,7 @@ tjbal <- function(
     seed = NULL
     ) {
     UseMethod("tjbal")
-}   
+}
 
 ####################################
 ## Main Functions
@@ -36,6 +38,8 @@ tjbal <- function(
 tjbal.formula <- function(
     formula = NULL,
     data, # data in long form
+    X.cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
+    mixed.data=FALSE, # TRUE if X contains categorical/one-hot/dummy encoded variables
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
     trim.npre = 0, # drop units with <= certain periods of pre-treatment data
@@ -73,15 +77,16 @@ tjbal.formula <- function(
     ## run the model
     out <- tjbal.default(data = data, Y = Yname,
                           D = Dname, X = Xname,
+                          X.cat.columns = X.cat.columns, mixed.data=mixed.data,
                           X.avg.time = X.avg.time, index = index, trim.npre = trim.npre,
-                          Y.match.time= Y.match.time, Y.match.npre = Y.match.npre,  
-                          demean = demean, estimator = estimator, 
-                          sigma = sigma, 
-                          print.baltable = print.baltable, 
-                          vce = vce, conf.lvl = conf.lvl, nsims = nsims, 
-                          parallel = parallel, cores = cores, 
+                          Y.match.time= Y.match.time, Y.match.npre = Y.match.npre,
+                          demean = demean, estimator = estimator,
+                          sigma = sigma,
+                          print.baltable = print.baltable,
+                          vce = vce, conf.lvl = conf.lvl, nsims = nsims,
+                          parallel = parallel, cores = cores,
                           seed = seed)
-    
+
     out$call <- match.call()
     out$formula <- formula
     ## print(out)
@@ -94,6 +99,8 @@ tjbal.default <- function(
     Y, # outcome
     D, # treatment
     X = NULL, # time-invariant covariates
+    X.cat.columns = NULL, # list of columns which contain categorical one-hot/dummy encoded variables
+    mixed.data=FALSE, # TRUE if X contains categorical/one-hot/dummy encoded variables
     X.avg.time = NULL, # take averages of covariates in a given time period
     index, # unit and time
     trim.npre = 0, # drop units with <= certain periods of pre-treatment data
@@ -113,11 +120,11 @@ tjbal.default <- function(
 
     ##-------------------------------##
     ## Checking Parameters
-    ##-------------------------------##  
+    ##-------------------------------##
 
     if (is.null(seed)==FALSE) {set.seed(seed)}
 
-    
+
     if (class(data)[1] == "tbl_df") {
         #warning("Transforming a tibble into a data frame.")
         data <- as.data.frame(data)
@@ -130,19 +137,19 @@ tjbal.default <- function(
     ## index
     if (length(index) != 2 | sum(index %in% colnames(data)) != 2) {
         stop("\"index\" option misspecified. Try, for example, index = c(\"unit.id\", \"time\").")
-    }   
+    }
 
     if (vce == "boot") {vce <- "bootstrap"}
     if (vce == "jack") {vce <- "jackknife"}
     if (vce == "fixed") {vce <- "fixed.weights"}
 
-    
+
 
     if (is.null(Y.match.time)==FALSE) {
         if (Y.match.time[1] == "none") {
             Y.match.pre <- 0
             Y.match.time <- NULL
-        }         
+        }
     }
 
     if (is.null(sigma)==FALSE) {
@@ -158,7 +165,7 @@ tjbal.default <- function(
 
     ##-------------------------------##
     ## Parsing raw data
-    ##-------------------------------##  
+    ##-------------------------------##
 
     ##store variable names
     Yname <- Y
@@ -170,7 +177,7 @@ tjbal.default <- function(
     TT <- length(unique(data[,time]))
     N <- length(unique(data[,id]))
     p <- length(Xname)
-    
+
     ## check balanced panel
     if (var(table(data[,id])) + var(table(data[, time])) > 0) {
         stop("The panel is not balanced.")
@@ -180,22 +187,22 @@ tjbal.default <- function(
     if (is.numeric(data[,time])==FALSE) {
         stop("The time indicator must be numeric.")
     }
-    
+
     ## check missingness
     if (sum(is.na(data[, Yname])) > 0) {
         stop(paste("Missing values in variable \"", Yname,"\".", sep = ""))
     }
     if (sum(is.na(data[, Dname])) > 0) {
         stop(paste("Missing values in variable \"", Dname,"\".", sep = ""))
-    }    
+    }
     if (sum(is.na(data[, id])) > 0) {
         stop(paste("Missing values in variable \"", id,"\".", sep = ""))
     }
     if (sum(is.na(data[, time])) > 0) {
         stop(paste("Missing values in variable \"", time,"\".", sep = ""))
-    } 
+    }
 
- 
+
     ## sort data
     data <- data[order(data[,id], data[,time]), ]
 
@@ -207,7 +214,7 @@ tjbal.default <- function(
     if (nrow(data) != TT*N) {
         stop("Data are not balanced or \"index\" does not uniquely identity an observation.")
     }
-    
+
     ##treatment indicator
     D.sav <- D<- matrix(data[,Dname],TT,N)
 
@@ -230,17 +237,17 @@ tjbal.default <- function(
         T0 <- T0[-id.drop]
         cat(paste0("\nDrop ",length(id.drop)," units with ",trim.npre," or fewer pre-treatment periods.\n"))
     }
-    
+
 
     ## treatment
     treat <-ifelse(D[TT,]==1, 1, 0)     # cross-sectional: treated unit
     id.tr <- which(treat == 1)
     id.co <- which(treat == 0)
     Ntr <- length(id.tr)
-    Nco <- length(id.co) 
+    Nco <- length(id.co)
     if (Ntr == 0) {
         stop("No treated units remain.")
-    } 
+    }
     if (Nco == 0) {
         stop("No control units remain.")
     }
@@ -249,24 +256,24 @@ tjbal.default <- function(
     if (Ntr <= 5) {
         cat("Too few treated unit(s). Uncertainty estimates not provided.\n")
         vce <- "none"
-    }    
+    }
 
     ## treatment timing
     T0.tr <- T0[id.tr]
     T0.min<-min(T0.tr)
 
-    ## same timing: 
+    ## same timing:
     if (Ntr==1) {
         sameT0 <- TRUE
     } else {
         if (var(T0.tr)==0) {
-            sameT0 <- TRUE        
+            sameT0 <- TRUE
         } else {
             sameT0 <- FALSE
         }
-    }    
+    }
     if (sameT0==TRUE) {
-        Tpre <- Ttot[1:unique(T0.tr)]        
+        Tpre <- Ttot[1:unique(T0.tr)]
     }
 
     ## outcome variable
@@ -276,7 +283,7 @@ tjbal.default <- function(
 
     ## covariates (allow missing, but non-missing values have to be same for each unit)
     if (class(data[,id])!="factor") { ## to avoid an error with ddply
-        data[,id] <- as.factor(data[,id])        
+        data[,id] <- as.factor(data[,id])
     }
     if (p > 0) {
         if (is.null(X.avg.time)==FALSE) {
@@ -295,8 +302,8 @@ tjbal.default <- function(
                         stop("Elements in \"X.avg.time\" must be in the pre-treatment period.")
                     }
                     selected.row <- which(data[,time] %in% this.period)
-                    X.pre <- data[selected.row, c(id,Xname[i]),drop = FALSE] 
-                    covar.tmp <- ddply(X.pre, .(unit = X.pre[, id]), 
+                    X.pre <- data[selected.row, c(id,Xname[i]),drop = FALSE]
+                    covar.tmp <- ddply(X.pre, .(unit = X.pre[, id]),
                         numcolwise(mean), na.rm = TRUE)[,-1]
                     if (length(covar.tmp)!=N) {
                         stop(paste0("Missing values in ",Xname[i]," in specified years."))
@@ -309,8 +316,8 @@ tjbal.default <- function(
                     stop("\"X.avg.time\" must be in the pre-treatment period.")
                 }
                 selected.row <- which(data[,time] %in% X.avg.time)
-                X.pre <- data[selected.row, Xname, drop = FALSE] 
-                Xvar <- ddply(X.pre, .(unit = data[selected.row, id]), 
+                X.pre <- data[selected.row, Xname, drop = FALSE]
+                Xvar <- ddply(X.pre, .(unit = data[selected.row, id]),
                     numcolwise(mean), na.rm = TRUE)[,-1]
                 ## check missingness
                 if (nrow(Xvar)!= N) {
@@ -318,7 +325,7 @@ tjbal.default <- function(
                 }
             }
             ## check missingness again
-            for (i in 1:p) {                
+            for (i in 1:p) {
                 if (sum(is.na(Xvar[, i])) > 0) {
                     stop(paste0("Missing values in variable \"", Xname[i],"\".", sep = ""))
                 }
@@ -334,24 +341,24 @@ tjbal.default <- function(
                 X.var <- apply(X.tmp,1,var,na.rm = TRUE)
                 if (sum(is.na(X.var))>0) {
                     stop(paste0("Variable \"", Xname[i], "\" is completely missing in some unit(s)."))
-                } 
+                }
                 if (sum(X.var)!=0) { # if not time-invariant
                     stop(paste0("\"", Xname[i],"\" is not time-invariant for some unit(s)."))
                 }
                 ## fill in the matrix
                 Xvar[,i] <- apply(X.tmp, 1, mean, na.rm=TRUE) # the first period
-            }   
+            }
         }
     }
 
-    
-    
+
+
     ## prepare "wide" form data
     if (p>0) {
         data.wide <- cbind.data.frame(id = 1:N, unit = units, treat = treat, T0 = T0, outcome, Xvar)
     } else {
         data.wide <- cbind.data.frame(id = 1:N, unit = units, treat = treat, T0 = T0, outcome)
-    } 
+    }
 
 
     #######################
@@ -360,20 +367,22 @@ tjbal.default <- function(
 
     if (sameT0 == TRUE) {
         bal.out <- tjbal.single(data = data.wide, Y = Yname, D = "treat", X = Xname,
-            Y.match.time = Y.match.time, Y.match.npre = Y.match.npre, 
-            Ttot = Ttot, unit = "id", 
-            demean = demean, estimator = estimator, sigma = sigma, 
+            X.cat.columns = X.cat.columns, mixed.data=mixed.data=FALSE,
+            Y.match.time = Y.match.time, Y.match.npre = Y.match.npre,
+            Ttot = Ttot, unit = "id",
+            demean = demean, estimator = estimator, sigma = sigma,
             print.baltable = print.baltable,
             vce = vce, conf.lvl = conf.lvl,
-            nsims = nsims, parallel = parallel, cores = cores)         
-    } else { 
+            nsims = nsims, parallel = parallel, cores = cores)
+    } else {
         bal.out <- tjbal.multi(data = data.wide, Y = Yname, D = "treat", X = Xname,
-            Y.match.time = Y.match.time, Y.match.npre = Y.match.npre, 
-            Ttot = Ttot, unit = "id", 
-            demean = demean, estimator = estimator, sigma = sigma, 
+            X.cat.columns = X.cat.columns, mixed.data=mixed.data=FALSE,
+            Y.match.time = Y.match.time, Y.match.npre = Y.match.npre,
+            Ttot = Ttot, unit = "id",
+            demean = demean, estimator = estimator, sigma = sigma,
             vce = vce, conf.lvl = conf.lvl,
-            nsims = nsims, parallel = parallel, cores = cores)  
-    } 
+            nsims = nsims, parallel = parallel, cores = cores)
+    }
 
     out <- c(list(sameT0 = sameT0, index = index, Yname = Yname), bal.out)
     out$call <- match.call()
