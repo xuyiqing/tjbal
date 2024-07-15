@@ -3,13 +3,14 @@ Type: Package
 Title: Trajectory Balancing
 Version: 0.4.0
 Date: 2022-08-01
-Authors@R: 
-  c(person("Chad", "Hazlett", ,"chazlett@ucla.edu", role = c("aut")), 
-  person("Yiqing", "Xu", ,"yiqingxu@stanford.edu", role = c("aut", "cre"), 
+Authors@R:
+  c(person("Chad", "Hazlett", ,"chazlett@ucla.edu", role = c("aut")),
+  person("Yiqing", "Xu", ,"yiqingxu@stanford.edu", role = c("aut", "cre"),
+  person("Alex", "Kravetz", ,"alexdkravetz@gmail.com", role = c("ctb"),
   comment = c(ORCID = "0000-0003-2041-6671")))
 Author: Chad Hazlett, Yiqing Xu
 Maintainer: Yiqing Xu <yiqingxu@stanford.edu>
-Description: Provides a general reweighting approach to causal inference with time-series cross-sectional (TSCS) data. It includes two estimators, mean balancing and kernel balancing. The former reweights control units such that the averages of the pre-treatment outcomes and covariates are approximately equal between the treatment and (reweighted) control groups. The latter relaxes the linearity assumption and seeks approximate balance on a kernel-based feature expansion of the pre-treatment outcomes and covariates. The resulting approach inherits the ability of synthetic control and latent factor models to tolerate time-varying confounders, but (1) improves feasibility and stability with reduced user discretion; (2) accommodates both short and long pre-treatment time periods with many or few treated units; and (3) balances on the high-order "trajectory" of pre-treatment outcomes rather than their period-wise average. 
+Description: Provides a general reweighting approach to causal inference with time-series cross-sectional (TSCS) data. It includes two estimators, mean balancing and kernel balancing. The former reweights control units such that the averages of the pre-treatment outcomes and covariates are approximately equal between the treatment and (reweighted) control groups. The latter relaxes the linearity assumption and seeks approximate balance on a kernel-based feature expansion of the pre-treatment outcomes and covariates. The resulting approach inherits the ability of synthetic control and latent factor models to tolerate time-varying confounders, but (1) improves feasibility and stability with reduced user discretion; (2) accommodates both short and long pre-treatment time periods with many or few treated units; and (3) balances on the high-order "trajectory" of pre-treatment outcomes rather than their period-wise average.
 NeedsCompilation: yes
 License: MIT
 Imports: ggplot2 (>= 2.1.0), plyr (>= 1.8.1), doParallel (>= 1.0.10), foreach (>= 1.4.3)
