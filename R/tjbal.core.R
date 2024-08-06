@@ -96,11 +96,14 @@ tjbal.core <- function(
         ndims <- 0
         ndims.mbal <- 0
         
+        # make sure data are numeric (error with integers)
+        allx = data.frame(lapply(data[, matchvar, drop=FALSE], as.numeric))
+        
         # mean balancing
         if (estimator == "mean") {            
             bal.type <- "mbal"
             tmp <- capture.output(
-                kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
+                kbal.out <- suppressWarnings(kbal(allx = allx,
                     treatment = data$treat, b=NULL, 
                     linkernel = TRUE, fullSVD = TRUE,
                     printprogress = FALSE, sampledinpop = FALSE))
@@ -112,7 +115,7 @@ tjbal.core <- function(
         if (estimator == "kernel") {
             bal.type <- "kbal"
             tmp <- capture.output(
-                kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
+                kbal.out <- suppressWarnings(kbal(allx = allx,
                     treatment = data$treat, b=b, 
                     linkernel = FALSE, fullSVD = TRUE,
                     printprogress = FALSE, sampledinpop = FALSE))
@@ -123,7 +126,7 @@ tjbal.core <- function(
         if (estimator == "meanfirst") {
             #cat("here\n")
             tmp <- capture.output(
-                kbal.out <- suppressWarnings(kbal(allx = data[,matchvar,drop = FALSE],
+                kbal.out <- suppressWarnings(kbal(allx = allx,
                     treatment = data$treat, b=b, fullSVD = TRUE,
                     linkernel = FALSE, meanfirst = TRUE,
                     printprogress = FALSE, sampledinpop = FALSE))
