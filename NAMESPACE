@@ -28,7 +28,7 @@ importFrom("kbal","kbal")
 ##importFrom("panelview", "panelview")
 
 export(tjbal)
-export(tjbal.single)
+export(tjbal.core)
 S3method("tjbal", "default")
 S3method("tjbal", "formula")
 S3method("print", "tjbal")
