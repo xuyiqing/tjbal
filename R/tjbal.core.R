@@ -17,7 +17,8 @@ tjbal.core <- function(
     demean = FALSE, # take out pre-treatment unit mean
     estimator,
     sigma = NULL, ## tuning parameters
-    info ## show information
+    info, ## show information
+    balance.table = FALSE # calculate balance table
     ) { 
 
 
@@ -97,7 +98,7 @@ tjbal.core <- function(
         ndims.mbal <- 0
         
         # make sure data are numeric (error with integers)
-        allx = data.frame(lapply(data[, matchvar, drop=FALSE], as.numeric))
+        allx <- data.frame(lapply(data[, matchvar, drop=FALSE], as.numeric))
         
         # mean balancing
         if (estimator == "mean") {            
@@ -203,36 +204,38 @@ tjbal.core <- function(
     ## balance table
     #####################
     
-    if (is.null(matchvar)==FALSE) {
-        
-        weighted.sd <- function(vec, w) {sqrt(sum(w * (vec - weighted.mean(vec,w))^2))}
-        if (Ntr>1) {
-            # treated
-            mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
-            sd.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, sd)
-            # control
-            mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean) 
-            sd.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, sd)
-            # weighted control 
-            mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
-            sd.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.sd, weights.co) 
-            # normalize by SD of the treated 
-            diff.pre <- (mean.tr - mean.co.pre)/sd.tr
-            diff.pst <- (mean.tr - mean.co.pst)/sd.tr                
-            bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, sd.tr, sd.co.pre,  sd.co.pst, diff.pre, diff.pst)
-        } else {
-            # treated
-            mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
-            # control
-            mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean)
-            # weighted control 
-            mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
-            # difference in means
-            diff.pre <- (mean.tr - mean.co.pre)/abs(mean.tr)
-            diff.pst <- (mean.tr - mean.co.pst)/abs(mean.tr)
-            bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, diff.pre, diff.pst)
-        }         
-    }
+    if (balance.table == TRUE) {
+      if (is.null(matchvar)==FALSE) {
+          
+          weighted.sd <- function(vec, w) {sqrt(sum(w * (vec - weighted.mean(vec,w))^2))}
+          if (Ntr>1) {
+              # treated
+              mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
+              sd.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, sd)
+              # control
+              mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean) 
+              sd.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, sd)
+              # weighted control 
+              mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
+              sd.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.sd, weights.co) 
+              # normalize by SD of the treated 
+              diff.pre <- (mean.tr - mean.co.pre)/sd.tr
+              diff.pst <- (mean.tr - mean.co.pst)/sd.tr                
+              bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, sd.tr, sd.co.pre,  sd.co.pst, diff.pre, diff.pst)
+          } else {
+              # treated
+              mean.tr <- apply(data[id.tr, matchvar, drop = FALSE], 2, mean) 
+              # control
+              mean.co.pre <- apply(data[id.co, matchvar, drop = FALSE], 2, mean)
+              # weighted control 
+              mean.co.pst <- apply(data[id.co, matchvar, drop = FALSE], 2, weighted.mean, weights.co) 
+              # difference in means
+              diff.pre <- (mean.tr - mean.co.pre)/abs(mean.tr)
+              diff.pst <- (mean.tr - mean.co.pst)/abs(mean.tr)
+              bal.table <- cbind.data.frame(mean.tr, mean.co.pre, mean.co.pst, diff.pre, diff.pst)
+          }         
+      }
+    }  
 
     
     #####################
@@ -260,14 +263,13 @@ tjbal.core <- function(
             list(bias.ratio = bias.ratio,
                 ndims = ndims,
                 kbal.out = kbal.out,
-                bal.table = bal.table,                
                 b = b))
             if (estimator == "meanfirst") {
-                out <- c(out, list(ndims.mbal = ndims.mbal, constraint = mbal.svd.keep))
+              out <- c(out, list(ndims.mbal = ndims.mbal, constraint = mbal.svd.keep))
             }
-            if (bal.type == "kbal") {
-                out <- c(out, list(b = b))
-            }  
+            if (balance.table == TRUE) {
+              out <- c(out, list(bal.table = bal.table))
+            }
         } 
 
     }             

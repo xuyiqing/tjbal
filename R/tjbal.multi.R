@@ -83,7 +83,7 @@ tjbal.multi <- function(
         out <- tjbal.core(data = data, Y = Y, X = X, Y.match.time = Y.match.time, 
             Y.match.npre = Y.match.npre, Ttot = Ttot, T0 = T0, id.tr = id.tr.one, id.co = id.co,
             demean = demean, estimator = estimator, sigma = sigma, 
-            info = FALSE) 
+            info = FALSE, balance.table = TRUE) 
 
         # saved results
         att <- out$att
