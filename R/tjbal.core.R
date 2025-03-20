@@ -161,21 +161,25 @@ tjbal.core <- function(
             ndims <- kbal.out$numdims #kbal dimensions
             if (is.null(ndims) == TRUE) {ndims <- 0}
             bias.ratio <- kbal.out$biasbound_opt/kbal.out$biasbound_orig
-            if (estimator == "mean") {
-                cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
-                    "; num.dims = ",ndims," (mbal)\n"))
-            }            
-            if (estimator == "kernel") {
-                cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
-                    "; num.dims = ",ndims," (kbal)\n"))                
+            if (info == TRUE) {
+              if (estimator == "mean") {
+                  cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
+                      "; num.dims = ",ndims," (mbal)\n"))
+              }            
+              if (estimator == "kernel") {
+                  cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
+                      "; num.dims = ",ndims," (kbal)\n"))                
+              }
+              if (estimator == "meanfirst") {
+                  cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
+                      "; num.dims = ",ndims.mbal," + ",ndims," (mbal + kbal)\n"))
+              }
             }
-            if (estimator == "meanfirst") {
-                cat(paste0("bias.ratio = ", sprintf("%.4f",bias.ratio),
-                    "; num.dims = ",ndims.mbal," + ",ndims," (mbal + kbal)\n"))
-            }            
         } else {
             ndims <- 0
-            cat("\nSolution not found. Equal weights being used.\n")
+            if (info == TRUE) {
+              cat("\nSolution not found. Equal weights being used.\n")
+            }
         }
     } else {
         bal.type <- "none"    
