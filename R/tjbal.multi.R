@@ -99,13 +99,15 @@ tjbal.multi <- function(
             if (success[i] == TRUE) {
                 bias.ratios[i] <- out$bias.ratio
                 ndims[i] <- out$ndims
-                if (out$bal.type == "kbal") {
-                    K.list[[i]] <- out$kbal.out$K           
-                    sigmas[i] <- out$b                    
-                    kernels[i] <- 1 
+                ## meanfirst with no kernel dimensions reports "mbal" but
+                ## still needs its kernel and mean-first columns to resample
+                if (out$bal.type == "kbal" || estimator == "meanfirst") {
+                    K.list[[i]] <- out$kbal.out$K
+                    sigmas[i] <- out$b
+                    kernels[i] <- 1
                     if (estimator == "meanfirst") {
-                        constraint.list[[i]] <- out$constriant
-                    }                   
+                        constraint.list[[i]] <- out$constraint
+                    }
                 } else {
                     kernels[i] <- 0
                 }                
@@ -230,20 +232,32 @@ tjbal.multi <- function(
                         N <- Ntr + Nco
                         # weights: treated add up to 1; controls add up to -1; sum is zero
                         w.jack <-  rep(1/(Ntr-1), (N-1))
-                        if (is.null(matchvar) == TRUE | ndims == 0) { # no reweighting                         
+                        if (is.null(matchvar) == TRUE | (ndims == 0 & is.null(constraint))) { # no reweighting
                             w.jack[(Ntr+1):N] <- rep(-1/Nco, Nco)
                         } else {
-                            tmp <- capture.output(                               
-                                kbal.jack <- suppressWarnings(kbal(
-                                    allx = data[-id, matchvar], 
-                                    K = K[-id,],
-                                    constraint = constraint[-id,], 
-                                    treatment = data[-id, D],
-                                    linkernel = (1-kernel), b = sigma, 
-                                    printprogress = FALSE, fullSVD = TRUE,
-                                    minnumdims = max(0,ndims-5), maxnumdims = ndims,                                    
-                                    sampledinpop=FALSE))
-                            , file = NULL)                
+                            args <- list(allx = data[-id, matchvar],
+                                K = K[-id, , drop = FALSE],
+                                treatment = data[-id, D],
+                                linkernel = (1-kernel), b = sigma,
+                                printprogress = FALSE, fullSVD = TRUE,
+                                sampledinpop = FALSE)
+                            if (is.null(constraint) == FALSE) {
+                                args$constraint <- constraint[-id, , drop = FALSE]
+                            }
+                            if (ndims > 0) {
+                                args$minnumdims <- max(0,ndims-5)
+                                args$maxnumdims <- ndims
+                                tmp <- capture.output(
+                                    kbal.jack <- suppressWarnings(do.call(kbal, args))
+                                , file = NULL)
+                            } else {
+                                ## meanfirst kept no kernel dimensions: balance on the
+                                ## mean-first columns only (kbal refuses maxnumdims = 0
+                                ## and numdims = 0)
+                                treat <- data[-id, D]
+                                kbal.jack <- kbal::getw(target = treat, observed = 1 - treat,
+                                    svd.U = constraint[-id, , drop = FALSE])
+                            }
                             w.jack[Ntr:(N-1)] <- kbal.jack$w[Ntr:(N-1)]/Nco*(-1)  # controls add up to -1;   
                         }                      
                         att <- apply(data[-id, Y.target] * w.jack, 2, sum)

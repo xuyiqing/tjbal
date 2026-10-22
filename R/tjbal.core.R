@@ -135,7 +135,9 @@ tjbal.core <- function(
             #cat("here2\n")    
             if (is.null(kbal.out$meanfirst_dims) == FALSE) {
                 ndims.mbal <- kbal.out$meanfirst_dims # mbal dimensions   
-                mbal.svd.keep <- kbal.out$meanfirst_cols # mbal constraints
+                # mbal constraints: kbal >= 0.1.4 returns them as appended_constraint_cols
+                mbal.svd.keep <- kbal.out$appended_constraint_cols
+                if (is.null(mbal.svd.keep)) {mbal.svd.keep <- kbal.out$meanfirst_cols}
                 kbal.bias.ratio <- kbal.out$biasbound_opt/kbal.out$biasbound_orig
                 if (is.null(kbal.out$numdims) == FALSE) {
                     bal.type <- "kbal"

@@ -62,14 +62,45 @@ tjbal.single <- function(
     ndims <- out$ndims
     K <- out$kbal.out$K
     constraint <- out$constraint
-    if (out$bal.type == "mbal") {
-        kernel <- 0
-    } else if (out$bal.type == "kbal") {
-        kernel <- 1
-    }
+    ## kernel type follows the estimator, not bal.type: meanfirst with no
+    ## kernel dimensions reports "mbal" but its K is still a Gaussian kernel
+    kernel <- as.numeric(estimator != "mean")
+    reweighted <- isTRUE(out$success) # FALSE: main fit used equal weights
     data <- out$data.wide
     id.tr <- 1:Ntr
     id.co <- (Ntr + 1): N
+
+    ## control weights for a resample (controls first in sample.id); controls
+    ## add up to -1. Re-balances with the dimensions the main fit chose; if the
+    ## main fit fell back to equal weights, so does the resample.
+    resample.weights <- function(sample.id) {
+        if (is.null(matchvar) == TRUE || reweighted == FALSE) {
+            return(rep(-1/Nco, Nco))
+        }
+        data.tmp <- data[sample.id, ]
+        args <- list(allx = data.tmp[, matchvar], treatment = data.tmp[, D],
+            K = K[sample.id, , drop = FALSE],
+            linkernel = (1-kernel), fullSVD = TRUE,
+            printprogress = FALSE, sampledinpop = FALSE)
+        if (is.null(constraint) == FALSE) {
+            args$constraint <- constraint[sample.id, , drop = FALSE]
+        }
+        if (ndims == 0) {
+            if (is.null(constraint) == TRUE) {return(rep(-1/Nco, Nco))}
+            ## meanfirst kept no kernel dimensions: balance on the mean-first
+            ## columns only (kbal refuses maxnumdims = 0 and numdims = 0)
+            treat <- data.tmp[, D]
+            getw.out <- kbal::getw(target = treat, observed = 1 - treat,
+                svd.U = constraint[sample.id, , drop = FALSE])
+            return(getw.out$w[1:Nco]/Nco*(-1))
+        }
+        args$minnumdims <- max(0,ndims-5)
+        args$maxnumdims <- ndims
+        tmp <- capture.output(
+            kbal.re <- suppressWarnings(do.call(kbal, args))
+        , file = NULL)
+        return(kbal.re$w[1:Nco]/Nco*(-1))
+    }
 
     if (print.baltable == TRUE && is.null(matchvar)==FALSE) {
         cat("\nBalance Table\n")
@@ -119,21 +150,7 @@ tjbal.single <- function(
             ## weights: treated add up to 1; controls add up to -1; sum is zero
             sample.id <- c(sample(id.co, Nco, replace = TRUE),sample(id.tr,Ntr, replace = TRUE))
             w.boot <- rep(1/Ntr, N)
-            if (is.null(matchvar) == TRUE) { # no reweighting                         
-                w.boot[1:Nco] <- rep(-1/Nco, Nco)
-            } else {
-                data.tmp <- data[sample.id, ]
-                tmp <- capture.output(                                
-                    kbal.boot <- suppressWarnings(kbal(allx = data.tmp[, matchvar], 
-                        treatment = data.tmp[, D],
-                        K = K[sample.id, , drop = FALSE],
-                        constraint = constraint[sample.id, , drop = FALSE], 
-                        linkernel = (1-kernel), fullSVD = TRUE,
-                        minnumdims = max(0,ndims-5), maxnumdims = ndims,
-                        printprogress = FALSE, sampledinpop = FALSE))
-                , file = NULL)                
-                w.boot[1:Nco] <- kbal.boot$w[1:Nco]/Nco*(-1)  # controls add up to -1;   
-            }
+            w.boot[1:Nco] <- resample.weights(sample.id)
             att <- apply(data[sample.id, Y.target] * w.boot, 2, sum)
             att.avg <- mean(att[(T0+1):TT])
             out <- list(att = att, att.avg = att.avg)
@@ -205,21 +222,7 @@ tjbal.single <- function(
                 sample.id <- c(id.co, setdiff(id.tr,id)) # drop one treated unit each time 
                 w.jack <-  rep(1/(Ntr-1), (N-1))                  
             }
-            if (is.null(matchvar) == TRUE) { # no reweighting                         
-                w.jack[1:Nco] <- rep(-1/Nco, Nco)
-            } else {
-                data.tmp <- data[sample.id, ]
-                tmp <- capture.output(
-                    kbal.jack <- suppressWarnings(kbal(allx = data.tmp[, matchvar], 
-                        K = K[sample.id, , drop = FALSE],
-                        constraint = constraint[sample.id, , drop = FALSE], 
-                        treatment = data.tmp[, D],
-                        linkernel = (1-kernel), fullSVD = TRUE,
-                        minnumdims = max(0,ndims-5), maxnumdims = ndims,   
-                        printprogress = FALSE))            
-                , file = NULL)    
-                w.jack[1:Nco] <- kbal.jack$w[1:Nco]/Nco*(-1)  # controls add up to -1;   
-            }                      
+            w.jack[1:Nco] <- resample.weights(sample.id)
             ## ATT
             att <- apply(data[sample.id, Y.target] * w.jack, 2, sum)
             att.avg <- mean(att[(T0+1):TT])
