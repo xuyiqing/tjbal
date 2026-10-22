@@ -255,8 +255,18 @@ tjbal.multi <- function(
                                 ## mean-first columns only (kbal refuses maxnumdims = 0
                                 ## and numdims = 0)
                                 treat <- data[-id, D]
-                                kbal.jack <- kbal::getw(target = treat, observed = 1 - treat,
-                                    svd.U = constraint[-id, , drop = FALSE])
+                                kbal.jack <- suppressWarnings(kbal::getw(target = treat, observed = 1 - treat,
+                                    svd.U = constraint[-id, , drop = FALSE]))
+                                if (isTRUE(as.logical(kbal.jack$converged)) == FALSE) {
+                                    ## not balanceable in this resample: redo the
+                                    ## mean-first choice instead of equal weights
+                                    tmp <- capture.output(
+                                        kbal.jack <- suppressWarnings(kbal(allx = data[-id, matchvar],
+                                            treatment = treat, b = sigma, linkernel = FALSE,
+                                            meanfirst = TRUE, fullSVD = TRUE,
+                                            printprogress = FALSE, sampledinpop = FALSE))
+                                    , file = NULL)
+                                }
                             }
                             w.jack[Ntr:(N-1)] <- kbal.jack$w[Ntr:(N-1)]/Nco*(-1)  # controls add up to -1;   
                         }                      

@@ -66,6 +66,7 @@ tjbal.single <- function(
     ## kernel dimensions reports "mbal" but its K is still a Gaussian kernel
     kernel <- as.numeric(estimator != "mean")
     reweighted <- isTRUE(out$success) # FALSE: main fit used equal weights
+    b.main <- out$b # kernel bandwidth of the main fit
     data <- out$data.wide
     id.tr <- 1:Ntr
     id.co <- (Ntr + 1): N
@@ -90,9 +91,19 @@ tjbal.single <- function(
             ## meanfirst kept no kernel dimensions: balance on the mean-first
             ## columns only (kbal refuses maxnumdims = 0 and numdims = 0)
             treat <- data.tmp[, D]
-            getw.out <- kbal::getw(target = treat, observed = 1 - treat,
-                svd.U = constraint[sample.id, , drop = FALSE])
-            return(getw.out$w[1:Nco]/Nco*(-1))
+            getw.out <- suppressWarnings(kbal::getw(target = treat, observed = 1 - treat,
+                svd.U = constraint[sample.id, , drop = FALSE]))
+            if (isTRUE(as.logical(getw.out$converged))) {
+                return(getw.out$w[1:Nco]/Nco*(-1))
+            }
+            ## these columns cannot be balanced in this resample (getw would
+            ## return equal weights): redo the mean-first choice on it instead
+            tmp <- capture.output(
+                kbal.re <- suppressWarnings(kbal(allx = data.tmp[, matchvar],
+                    treatment = treat, b = b.main, linkernel = FALSE, meanfirst = TRUE,
+                    fullSVD = TRUE, printprogress = FALSE, sampledinpop = FALSE))
+            , file = NULL)
+            return(kbal.re$w[1:Nco]/Nco*(-1))
         }
         args$minnumdims <- max(0,ndims-5)
         args$maxnumdims <- ndims
